@@ -1,0 +1,656 @@
+﻿Харківський національний університет радіоелектроніки
+Факультет комп’ютерних наук
+Катедра програмної інженерії
+
+
+Звіт
+з практичної роботи № 2
+з дисципліни «Аналіз та рефакторинг коду»
+на тему «Використання методів рефакторингу Extract Method, Rename Method, Replace Conditional with Polymorphism у VB.NET»
+
+
+
+    Виконав:                                                                           Перевірив:
+ст. гр. ПЗПІ-23-4                                                              ст. викладач кафедри ПІ
+Цисельський Андрій                                            	         Сокорчук Ігор Петрович
+
+
+
+Харків 2025
+1 ІСТОРІЯ ЗМІН
+
+№ДатаВерсія звітуОпис змін та виправлень120.11.20250.1Зроблено звіт
+2 ЗАВДАННЯ
+     Метою цієї роботи є опанування базових методів рефакторингу коду на основі реальних прикладів. Необхідно навчитися виявляти недоліки у програмному коді та застосовувати відповідні техніки рефакторингу для підвищення його якості.
+3 ОПИС ВИКОНАНОЇ РОБОТИ
+     Рефакторинг — це не просто покращення зовнішнього вигляду коду, а систематичний інженерний підхід, спрямований на підтримання високої якості програмного забезпечення впродовж усього життєвого циклу проєкту. У міру розвитку системи її структура ускладнюється: логіка розростається, з’являються дублікати, змінюються вимоги користувачів. Через це код поступово стає менш зрозумілим і важчим у супроводі, а внесення змін — більш ризикованим. Рефакторинг допомагає запобігти накопиченню таких проблем, роблячи код логічно впорядкованим, передбачуваним і стійким до змін. Він зменшує технічний борг, пришвидшує розробку нових можливостей та знижує ймовірність помилок. По суті, рефакторинг — це інвестиція в довгострокову якість і стабільність продукту, що підвищує ефективність роботи команди та надійність програмного забезпечення.
+     У цій роботі я зосередився на трьох поширених і результативних техніках рефакторингу: Extract Method, Rename Method та Replace Conditional with Polymorphism.
+     Extract Method дає змогу виділити фрагменти складної логіки в окремі методи з чіткою відповідальністю. Такий підхід робить код чистішим, підвищує його читабельність і спрощує повторне використання окремих частин логіки.
+     Rename Method спрямований на покращення зрозумілості коду. Влучні та інформативні назви методів допомагають зменшити кількість коментарів і значно полегшують навігацію у проєкті, роблячи наміри розробника очевидними.
+     Replace Conditional with Polymorphism дозволяє позбутися громіздких умовних конструкцій, замінивши їх поліморфною моделлю. Завдяки цьому код стає гнучкішим, легше розширюється та краще відповідає принципу відкритості/закритості.
+     У поєднанні ці методи формують підхід, який забезпечує створення чистого, підтримуваного та масштабованого коду у VB.NET, полегшуючи подальший розвиток і модернізацію програмного забезпечення.
+     У поданому прикладі з класом ReportGenerator метод GenerateReport виконує занадто багато завдань одночасно. Він не лише відповідає за створення звіту, а й містить логіку підрахунку суми та середнього значення. Через це код стає менш читабельним, складнішим для тестування та порушує Single Responsibility Principle, оскільки один метод має одразу кілька відповідальностей.
+Поганий приклад:
+1. Public Class ReportGenerator
+  2.     Public Sub GenerateReport(data As List(Of Integer))
+  3.         Console.WriteLine("Generating report...")
+  4. 
+  5.         Dim sum As Integer = 0
+  6.         For Each value In data
+  7.             sum += value
+  8.         Next
+  9.         Console.WriteLine("Total sum: " & sum)
+  10. 
+  11.         Dim avg As Double = 0
+  12.         For Each value In data
+  13.             avg += value
+  14.         Next
+  15.         avg /= data.Count
+  16.         Console.WriteLine("Average: " & avg)
+  17. 
+  18.         Console.WriteLine("Report generated.")
+  19.     End Sub
+  20. End Class 
+У початковій реалізації проблеми такі:
+* метод GenerateReport містить дублювання логіки — цикл для обчислення суми та цикл для обчислення середнього повторюють однакові операції;
+* через змішання виводу в консоль і логічних обчислень код важко тестувати (доводиться перевіряти роботу всього методу одразу);
+* метод постійно зростатиме в обсязі при додаванні нових статистичних показників;
+* код складно підтримувати та зрозуміти з першого погляду.
+     Для виправлення цих недоліків застосовано техніку Extract Method. Обчислення винесено в окремі приватні методи — CalculateSum і CalculateAverage. Завдяки цьому метод GenerateReport став чистішим і описує процес формування звіту на високому рівні, не занурюючись у деталі обчислень.
+Гарний приклад:
+1. Public Class ReportGeneratorCorrected
+2.     Public Sub GenerateReport(data As List(Of Integer))
+3.         Console.WriteLine("Generating report...")
+4. 
+5.         Dim sum As Integer = CalculateSum(data)
+6.         Console.WriteLine("Total sum: " & sum)
+7. 
+8.         Dim avg As Double = CalculateAverage(data)
+9.         Console.WriteLine("Average: " & avg)
+10. 
+11.         Console.WriteLine("Report generated.")
+12.     End Sub
+13. 
+14.     Private Function CalculateSum(data As List(Of Integer)) As Integer
+15.         Dim result As Integer = 0
+16.         For Each value In data
+17.             result += value
+18.         Next
+19.         Return result
+20.     End Function
+21. 
+22.     Private Function CalculateAverage(data As List(Of Integer)) As Double
+23.         Return CalculateSum(data) / data.Count
+24.     End Function
+25. End Class
+
+Після рефакторингу код стає більш структурованим:
+* метод GenerateReport відповідає лише за формування та вивід звіту;
+* підрахунки виконуються окремими методами, що спрощує перевикористання логіки;
+* будь-які зміни в алгоритмах підрахунку виконуються в одному місці;
+* методи обчислення легко тестуються окремо;
+* код стає гнучкішим для розширення — у майбутньому можна легко додати новий метод CalculateMedian, CalculateMax тощо.
+Переваги отриманого коду після рефакторингу
+* Покращена читабельність — метод GenerateReport став зрозумілішим і відображає тільки загальний сценарій виконання.
+* Повторне використання логіки — методи CalculateSum та CalculateAverage можна використовувати в інших частинах програми.
+* Тестованість — обчислювальні методи можна тестувати окремо від процесу генерації звіту.
+* Підтримуваність — зміни в обчисленнях не зачіпають основний потік виконання коду.
+* Відповідність принципам SOLID — завдяки розділенню відповідальностей код краще відповідає принципу SRP (Single Responsibility Principle).
+     
+     У наведеному прикладі з класом UserService основна проблема полягає не у складності логіки чи дублюванні коду, а у некоректному та нечіткому найменуванні методу. Метод DoIt не відображає своєї реальної суті та не дає зрозуміти, що він насправді перевіряє. Такі назви знижують читабельність, ускладнюють супровід коду та заважають швидко зрозуміти наміри розробника.
+Поганий приклад:
+1. Public Class UserService
+2.      Public Function DoIt(u As String, a As Integer) As Boolean
+3.          If a > 18 Then
+4.              Console.WriteLine("User " & u & " is adult.")
+5.              Return True
+6.          Else
+7.              Console.WriteLine("User " & u & " is not adult.")
+8.              Return False
+9.          End If
+10.      End Function
+11.  End ClassEnd Class 
+Проблеми початкового варіанту такі:
+* назва методу DoIt не має жодного змістового навантаження;
+* назви параметрів u і a скорочені та неінформативні — важко зрозуміти, що це імʼя користувача та вік;
+* читання коду ускладнюється, особливо коли таких методів у проєкті багато;
+* у майбутньому розробникам доведеться витрачати додатковий час на розуміння логіки методу.
+     Для усунення цих недоліків застосовано метод рефакторингу Rename Method — перейменування методу та його параметрів на інформативні та змістовні. Такий підхід робить код самодокументованим і зменшує кількість необхідних коментарів.
+Гарний приклад:
+1. Public Class UserServiceСorrected
+2.      Public Function IsUserAdult(userName As String, age As Integer) As Boolean
+3.          If age > 18 Then
+4.              Console.WriteLine("User " & userName & " is adult.")
+5.              Return True
+6.          Else
+7.              Console.WriteLine("User " & userName & " is not adult.")
+8.              Return False
+9.          End If
+10.      End Function
+11.  End Class
+
+Після рефакторингу:
+* метод отримав назву IsUserAdult, яка чітко описує його призначення — перевірка повноліття користувача;
+* параметри userName та age стали зрозумілими та логічними;
+* код читається значно простіше й не потребує додаткових пояснень;
+* поліпшено відповідність принципу Clean Code — "код повинен говорити сам за себе".
+Переваги отриманого коду після рефакторингу
+* Покращена читабельність — назва методу одразу пояснює, що він робить.
+* Самодокументованість — параметри чітко відображають свої дані, зменшуючи потребу в коментарях.
+* Підтримуваність — код легше зрозуміти новим членам команди або самому розробнику через певний час.
+* Зменшення ризику помилок — зрозуміле найменування знижує ймовірність неправильного використання методу.
+* Дотримання принципів чистого коду та SOLID — особливо принципу єдиної відповідальності щодо найменувань і зрозумілості.
+
+     У наведеному прикладі з PaymentProcessor основна проблема полягає в надмірному використанні умовних конструкцій (If…ElseIf…Else). Метод ProcessPayment містить одразу кілька гілок логіки, кожна з яких відповідає за окремий спосіб оплати. Це призводить до збільшення складності методу, дублювання коду та порушення принципів SOLID — зокрема, Open/Closed Principle, оскільки додавання нового способу оплати вимагає редагувати вже існуючий код.
+Поганий приклад:
+1. Public Class PaymentProcessor
+2.     Public Function ProcessPayment(type As String, amount As Double) As Double
+3.         If type = "Card" Then
+4.             Console.WriteLine("Processing card payment...")
+5.             Return amount * 0.98 ' 2% комісія
+6.         ElseIf type = "PayPal" Then
+7.             Console.WriteLine("Processing PayPal payment...")
+8.             Return amount * 0.96 ' 4% комісія
+9.         ElseIf type = "Crypto" Then
+10.             Console.WriteLine("Processing crypto payment...")
+11.             Return amount * 0.9 ' 10% комісія
+12.         Else
+13.             Throw New Exception("Unknown payment method")
+14.         End If
+15.     End Function
+16. End ClassClass UserService
+17.      Public Function DoIt(u As String, a As Integer) As Boolean
+18.          If a > 18 Then
+19.              Console.WriteLine("User " & u & " is adult.")
+20.              Return True
+21.          Else
+22.              Console.WriteLine("User " & u & " is not adult.")
+23.              Return False
+24.          End If
+25.      End Function
+26.  End ClassEnd Class 
+Проблеми вихідної реалізації:
+* метод містить громіздкий умовний ланцюжок If…ElseIf, що ускладнює читання і розуміння коду;
+* додавання нового способу оплати потребує змін в існуючому методі, що порушує принцип відкритості/закритості;
+* код важко тестувати — кожна нова умова збільшує кількість можливих сценаріїв перевірки;
+* логіка обробки платежів різних типів змішана всередині одного методу, що робить його нестабільним і монолітним.
+     Для усунення вказаних недоліків застосовано метод Replace Conditional with Polymorphism, який базується на силі наслідування та поліморфізму. Замість умовного оператора створюються окремі класи для кожного типу оплати, кожний з яких реалізує метод Process по-своєму. Це дозволяє розділити логіку й відокремити її від процесора платежів.
+Гарний приклад:
+1. Public MustInherit Class PaymentMethod
+2.     Public MustOverride Function Process(amount As Double) As Double
+3. End Class
+4. 
+5. Public Class CardPayment
+6.     Inherits PaymentMethod
+7.     Public Overrides Function Process(amount As Double) As Double
+8.         Console.WriteLine("Processing card payment...")
+9.         Return amount * 0.98
+10.     End Function
+11. End Class
+12. 
+13. Public Class PayPalPayment
+14.     Inherits PaymentMethod
+15.     Public Overrides Function Process(amount As Double) As Double
+16.         Console.WriteLine("Processing PayPal payment...")
+17.         Return amount * 0.96
+18.     End Function
+19. End Class
+20. 
+21. Public Class CryptoPayment
+22.     Inherits PaymentMethod
+23.     Public Overrides Function Process(amount As Double) As Double
+24.         Console.WriteLine("Processing crypto payment...")
+25.         Return amount * 0.9
+26.     End Function
+27. End Class
+28. 
+29. Public Class PaymentProcessorСorrected
+30.     Public Function ProcessPayment(method As PaymentMethod, amount As Double) As Double
+31.         Return method.Process(amount)
+32.     End Function
+33. End Class
+
+У покращеній реалізації:
+*  створено абстрактний клас PaymentMethod із методом Process;
+*  для кожного способу оплати створено власний клас (CardPayment, PayPalPayment, CryptoPayment), який реалізує конкретну логіку обробки;
+*  клас PaymentProcessorCorrected отримує об’єкт відповідного типу, не знаючи деталей його реалізації.
+
+Такий підхід:
+*  робить систему відкритою для розширення — можна легко додати, наприклад, GooglePayPayment, не змінюючи жодного рядка в PaymentProcessor;
+*  зменшує складність коду, усуваючи громіздкі умовні конструкції;
+*  покращує читабельність і структуру коду;
+*  збільшує тестованість, оскільки кожен спосіб оплати можна перевіряти окремо;
+*  робить код більш стійким до змін і гнучким.
+Переваги отриманого коду після рефакторингу
+*  Позбавлення складних умов — логіка розподіляється між окремими класами, а не зосереджена в одному великому методі.
+*  Масштабованість — новий тип оплати додається простим створенням нового класу.
+*  Відповідність OCP (Open/Closed Principle) — код можна розширювати без змін існуючої поведінки.
+*  Покращена тестованість — кожен спосіб оплати має власну ізольовану логіку.
+*  Чистота та підтримуваність — код легше читати, підтримувати і модифікувати.
+
+
+
+
+
+
+
+
+
+
+
+
+
+4 ВИСНОВКИ
+     Після проведеного рефакторингу код у проєкті став значно зрозумілішим і легшим для сприйняття. Завдяки перейменуванню методів, виділенню обчислень у допоміжні функції та заміні умовних конструкцій поліморфізмом основна логіка тепер подана на більш високому рівні абстракції, без зайвих деталей. Це дозволяє швидко орієнтуватися в роботі класів та легше стежити за послідовністю виконання.
+     У підсумку, рефакторинг покращив читабельність, підтримуваність, повторне використання й тестованість коду, при цьому не змінивши зовнішню поведінку та логіку роботи програми.
+     
+5 ВИКОРИСТАНІ ДЖЕРЕЛА
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК А
+Відеозапис
+Відеозапис презентації результатів практичної роботи: https://youtu.be/xGieaejTW70
+Хронологічний опис відеозапису:
+00:00 - Вступ
+00:25 - Зміст
+00:32 - Що таке рефакторинг та навіщо він потрібен
+01:18 - Обрані методи рефакторингу
+02:20 - Приклад 1
+03:36 - Приклад 2
+04:52 - Приклад 3
+06:13 - Висновки
+07:30 - Список використаних джерел
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК Б
+Слайди презентації
+
+Рисунок Б.1 - Титульний лист
+
+
+Рисунок Б.2 - Зміст
+
+Рисунок Б.3 – Що таке рефакторинг та навіщо він потрібен
+
+
+Рисунок Б.4 – Обрані методи рефакторінгу
+
+
+Рисунок Б.5 – Приклад 1: Поганий приклад
+
+
+Рисунок Б.6 – Виправлений код (Extract Method)
+
+
+Рисунок Б.7 – Приклад 2: Поганий приклад
+
+
+Рисунок Б.8 – Виправлений код (Rename Method)
+
+
+Рисунок Б.9 – Приклад 3: Поганий приклад
+
+
+Рисунок Б.10 –Виправлений код (Replace Conditional with Polymorphism)
+
+
+Рисунок Б.11 – Висновки
+
+
+Рисунок Б.12 – Список використаних джерел
+
+ДОДАТОК В
+Програмний код
+GitHub репозиторій: https://github.com/NureTsyselskyiAndrii/ark-pzpi-23-4-tsyselskyi-andrii/blob/main/Pract2/ark-pzpi-23-4-tsyselskyi-andrii-pract2/code-examples-refactoring-methods.vb
+1. Module Program
+2.     Sub Main(args As String())
+3. 
+4. 
+5.     End Sub
+6. 
+7.     ' поганий приклад
+8.     Public Class ReportGenerator
+9.         Public Sub GenerateReport(data As List(Of Integer))
+10.             Console.WriteLine("Generating report...")
+11. 
+12.             Dim sum As Integer = 0
+13.             For Each value In data
+14.                 sum += value
+15.             Next
+16.             Console.WriteLine("Total sum: " & sum)
+17. 
+18.             Dim avg As Double = 0
+19.             For Each value In data
+20.                 avg += value
+21.             Next
+22.             avg /= data.Count
+23.             Console.WriteLine("Average: " & avg)
+24. 
+25.             Console.WriteLine("Report generated.")
+26.         End Sub
+27.     End Class
+28. 
+29.     ' гарний приклад
+30.     Public Class ReportGeneratorCorrected
+31.         Public Sub GenerateReport(data As List(Of Integer))
+32.             Console.WriteLine("Generating report...")
+33. 
+34.             Dim sum As Integer = CalculateSum(data)
+35.             Console.WriteLine("Total sum: " & sum)
+36. 
+37.             Dim avg As Double = CalculateAverage(data)
+38.             Console.WriteLine("Average: " & avg)
+39. 
+40.             Console.WriteLine("Report generated.")
+41.         End Sub
+42. 
+43.         Private Function CalculateSum(data As List(Of Integer)) As Integer
+44.             Dim result As Integer = 0
+45.             For Each value In data
+46.                 result += value
+47.             Next
+48.             Return result
+49.         End Function
+50. 
+51.         Private Function CalculateAverage(data As List(Of Integer)) As Double
+52.             Return CalculateSum(data) / data.Count
+53.         End Function
+54.     End Class
+55. 
+56. 
+57.     ' поганий приклад
+58.     Public Class UserService
+59.         Public Function DoIt(u As String, a As Integer) As Boolean
+60.             If a > 18 Then
+61.                 Console.WriteLine("User " & u & " is adult.")
+62.                 Return True
+63.             Else
+64.                 Console.WriteLine("User " & u & " is not adult.")
+65.                 Return False
+66.             End If
+67.         End Function
+68.     End Class
+69. 
+70.     ' гарний приклад
+71.     Public Class UserServiceСorrected
+72.         Public Function IsUserAdult(userName As String, age As Integer) As Boolean
+73.             If age > 18 Then
+74.                 Console.WriteLine("User " & userName & " is adult.")
+75.                 Return True
+76.             Else
+77.                 Console.WriteLine("User " & userName & " is not adult.")
+78.                 Return False
+79.             End If
+80.         End Function
+81.     End Class
+82. 
+83.     ' поганий приклад
+84.     Public Class PaymentProcessor
+85.         Public Function ProcessPayment(type As String, amount As Double) As Double
+86.             If type = "Card" Then
+87.                 Console.WriteLine("Processing card payment...")
+88.                 Return amount * 0.98 ' 2% комісія
+89.             ElseIf type = "PayPal" Then
+90.                 Console.WriteLine("Processing PayPal payment...")
+91.                 Return amount * 0.96 ' 4% комісія
+92.             ElseIf type = "Crypto" Then
+93.                 Console.WriteLine("Processing crypto payment...")
+94.                 Return amount * 0.9 ' 10% комісія
+95.             Else
+96.                 Throw New Exception("Unknown payment method")
+97.             End If
+98.         End Function
+99.     End Class
+100. 
+101.     ' гарний приклад
+102.     Public MustInherit Class PaymentMethod
+103.         Public MustOverride Function Process(amount As Double) As Double
+104.     End Class
+105. 
+106.     Public Class CardPayment
+107.         Inherits PaymentMethod
+108.         Public Overrides Function Process(amount As Double) As Double
+109.             Console.WriteLine("Processing card payment...")
+110.             Return amount * 0.98
+111.         End Function
+112.     End Class
+113. 
+114.     Public Class PayPalPayment
+115.         Inherits PaymentMethod
+116.         Public Overrides Function Process(amount As Double) As Double
+117.             Console.WriteLine("Processing PayPal payment...")
+118.             Return amount * 0.96
+119.         End Function
+120.     End Class
+121. 
+122.     Public Class CryptoPayment
+123.         Inherits PaymentMethod
+124.         Public Overrides Function Process(amount As Double) As Double
+125.             Console.WriteLine("Processing crypto payment...")
+126.             Return amount * 0.9
+127.         End Function
+128.     End Class
+129. 
+130.     Public Class PaymentProcessorСorrected
+131.         Public Function ProcessPayment(method As PaymentMethod, amount As Double) As Double
+132.             Return method.Process(amount)
+133.         End Function
+134.     End Class
+135. 
+136. 
+137. End Module
+138. rogram
+139.     Sub Main(args As String())
+140. 
+141.         ' Добре
+142.         Dim CustomerName As String
+143.         Dim TotalPrice As Decimal
+144. 
+145.         ' Погано
+146.         Dim customer_name As String
+147.         Dim totalprice As Decimal
+148. 
+149. 
+150.         Dim HtmlDocument As String
+151.         Dim UserURL As String
+152. 
+153.         ' Погано (занадто довго і змішано)
+154.         Dim HypertextMarkupLanguageDocument As String
+155.         Dim WebAddr As String
+156. 
+157.         ' Уникайння однакових імен 
+158.         Dim Date As String = "10/23/2025"
+159. 
+160.         ' Правильний варіант
+161.         Dim currentDate As String = "10/23/2025"
+162. 
+163.         ' Якщо треба звернутися до вбудованого Date:
+164.         Dim currentDate = DateTime.Date
+165.         MsgBox(currentDate.ToString())
+166. 
+167. 
+168.         Dim a As Integer : Dim b As Integer
+169.         a = 5 : b = 10
+170.         If a < b Then Console.WriteLine("Smaller")
+171. 
+172. 
+173.         ' Добре
+174.         Dim a As Integer
+175.         Dim b As Integer
+176. 
+177.         a = 5
+178.         b = 10
+179. 
+180.         If a < b Then
+181.             Console.WriteLine("Smaller")
+182.         End If
+183. 
+184.         ' Погано
+185.         Dim letters2() As String = New String() {"a", "b", "c"}
+186. 
+187.         ' Добре
+188.         Dim letters1 As String() = {"a", "b", "c"}
+189. 
+190.         ' Погано
+191.         Dim letters3() As String = {"a", "b", "c"}
+192. 
+193.         Dim letters6(2) As String
+194.         letters6(0) = "a"
+195.         letters6(1) = "b"
+196.         letters6(2) = "c"
+197. 
+198.         ' Добре
+199.         Dim letters4 As String() = {"a", "b", "c"}
+200.         Dim letters5 As String() = {"a", "b", "c"}
+201. 
+202. 
+203.         ' Погано
+204.         Dim q = From c In customers, o In orders
+205.                 Where c.CustomerID = o.CustomerID
+206.                 Select c.Name, o.ID
+207. 
+208.         ' Добре
+209.         Dim customerOrders = From customer In customers
+210.                              Join order In orders
+211.                                On customer.CustomerID Equals order.CustomerID
+212.                              Where customer.City = "Seattle"
+213.                              Select CustomerName = customer.Name,
+214.                                     OrderID = order.ID
+215.     End Sub
+216. 
+217. 
+218. 
+219.     ' Погано
+220.     Sub Salary()
+221.         ' ...
+222.     End Sub
+223. 
+224.     ' Добре
+225.     Sub CalculateSalary()
+226.         ' ...
+227.     End Sub
+228. 
+229.     ' Погано
+230.     Public Class Employ
+231.         Public Property EmployeeName As String
+232.     End Class
+233. 
+234.     ' Добре
+235.     Public Class Employee
+236.         Public Property EmployeeName As String
+237.     End Class
+238. 
+239.     ' Інтерфейс (Погано)
+240.     Public Interface Printable
+241.         Sub PrintDocument()
+242.     End Interface
+243. 
+244.     ' Інтерфейс (Добре)
+245.     Public Interface IPrintable
+246.         Sub PrintDocument()
+247.     End Interface
+248. 
+249.     ' Обробник події (Погано)
+250.     Public Sub MouseClick(sender As Object, e As EventArgs)
+251.         MsgBox("Mouse clicked!")
+252.     End Sub
+253. 
+254. 
+255.     ' Обробник події (Добре)
+256.     Public Sub MouseClickEventHandler(sender As Object, e As EventArgs)
+257.         MsgBox("Mouse clicked!")
+258.     End Sub
+259. 
+260. 
+261.     ' Клас аргументів події (Погано)
+262.     Public Class Order
+263.         Inherits EventArgs
+264.         Public Property OrderId As Integer
+265.     End Class
+266. 
+267.     ' Клас аргументів події (Добре)
+268.     Public Class OrderEventArgs
+269.         Inherits EventArgs
+270.         Public Property OrderId As Integer
+271.     End Class
+272. 
+273. 
+274.     ' Погано
+275.     Dim a As Integer, b As Integer, c As Integer
+276.     Sub Test() : Console.WriteLine("Hello") : End Sub
+277.     Property Name As String : Get : Return _name : End Get : Set(value As String) : _name = value : End Set : End Property
+278. 
+279.     ' Добре
+280.     Dim a As Integer
+281.     Dim b As Integer
+282.     Dim c As Integer
+283. 
+284.     Sub Test()
+285.         Console.WriteLine("Hello")
+286.     End Sub
+287. 
+288.     Property Name As String
+289.         Get
+290.             Return _name
+291.         End Get
+292.         Set(value As String)
+293.             _name = value
+294.         End Set
+295.     End Property
+296. 
+297.     ' Погано
+298.     Dim x As Integer = 10 'variable for count
+299.     '************ Start of Function ************
+300.     Function Add(a As Integer, b As Integer) As Integer
+301.         Return a + b 'adds numbers
+302.     End Function 'end
+303.     '************ End ************
+304. 
+305.     ' Добре
+306.     ' Variable for counting.
+307.     Dim x As Integer = 10
+308. 
+309.     ' Adds two numbers and returns the result.
+310.     Function Add(a As Integer, b As Integer) As Integer
+311.         Return a + b
+312.     End Function
+313. 
+314. End Module
+
+
+2
+
+
+
+
+
+
+
+
+
+

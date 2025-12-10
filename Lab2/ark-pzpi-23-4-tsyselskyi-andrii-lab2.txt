@@ -1,0 +1,1110 @@
+﻿Харківський національний університет радіоелектроніки
+Факультет комп’ютерних наук
+Катедра програмної інженерії
+
+
+Звіт
+з лабораторної роботи № 2
+з дисципліни «Аналіз та рефакторинг коду»
+на тему «Розробка бази даних для серверної частини системи та прикладного програмного інтерфейсу (API)»
+
+
+
+    Виконав:                                                                           Перевірив:
+ст. гр. ПЗПІ-23-4                                                              ст. викладач кафедри ПІ
+Цисельський Андрій                                            	         Сокорчук Ігор Петрович
+
+
+
+Харків 2025
+1 ІСТОРІЯ ЗМІН
+
+№ДатаВерсія звітуОпис змін та виправлень120.11.20250.1Зроблено звіт
+2 ЗАВДАННЯ
+     Метою цієї роботи є набуття практичних навичок у розробці серверної частини програмної системи: від проєктування бази даних (БД) та створення UML- і ER-діаграм до реалізації API для взаємодії з клієнтськими застосунками та тестування їхньої роботи. Також передбачено опанування інструментів роботи з Git-репозиторіями та підготовки технічної документації.
+3 ОПИС ВИКОНАНОЇ РОБОТИ
+     Темою проєкту для виконання лабораторних робіт є програмна система для зберігання та видачі пігулок у медичних закладах. 
+     Першим кроком при розробці програмної системи є розробка її будови (див. рис. 3.1).
+
+Рисунок 3.1- Архітектурне рішення для серверної частини системи, клієнтських взаємодій та БД
+	Опишемо сутності системи:
+     Модель Workplace
+     Workplace — це фізичне місце, де працюють лікарі, знаходяться пристрої, зберігаються медикаменти та здійснюється видача ліків.
+Усі сутності, пов’язані з лікарями, пристроями та складськими залишками, прив’язуються до конкретного робочого місця через workplace_id.
+     Модель User
+     User — зареєстрований користувач системи. Користувач може бути лікарем або пацієнтом. У системі користувач має загальні персональні дані, а роль конкретизації задається об’єктами Doctor або Patient, які прив’язані до User.
+     Модель Doctor
+     Doctor — медичний працівник, який:
+* належить до одного workplace
+* має спеціалізацію (Specialization)
+* має посаду (Position)
+* має обліковий запис у User
+     Лікар може створювати рецепти, додавати медичні записи й підтверджувати видачу медикаментів.
+     Модель Patient
+Patient — фізична особа, що отримує лікування.
+Пацієнт має:
+* персональні медичні дані (BloodType)
+* медичні записи (MedicalRecord)
+* рецепти (Prescription)
+* історію видач медикаментів (DispenseEvent)
+     Модель MedicalRecord
+     Медичний запис, що фіксує інформацію про стан здоров’я пацієнта, діагноз, призначення тощо. Кожен запис прив’язаний до одного пацієнта через patient_id.
+     Модель Prescription
+     Prescription — це рецепт, створений лікарем. Він містить дату початку, закінчення лікування та перелік медикаментів через PrescriptionMedication. Рецепт прив’язаний до пацієнта і лікаря.
+     Модель PrescriptionMedication
+     Описує конкретний медикамент у межах рецепта:
+* дозування
+* кількість прийомів
+* періодичність
+* знижка
+     Пов’язує Prescription та Medication як зв’язуюча таблиця many-to-many з додатковими полями.
+     Модель Medication
+     Medication — лікарський засіб. Містить детальну інформацію:
+* назва
+* форма (Form)
+* виробник (Manufacturer)
+* склад, концентрація
+* умови зберігання
+* протипоказання
+* побічні ефекти
+* ціна
+     Може бути в рецептах, видачах, складських залишках.
+     Модель Form
+     Описує лікарську форму медикаменту (таблетки, капсули, сироп, мазь тощо). Кожна форма може використовуватись у багатьох Medication.
+     Модель Manufacturer
+     Виробник медикаментів. Може виробляти багато Medication.
+     Модель MedicationStock
+     Одиниця запасу медикаменту, яка знаходиться у конкретному workplace. Містить:
+* кількість
+* дату виробництва
+* термін придатності
+* дату поступлення
+     Використовується для контролю запасів медикаментів.
+     Модель Device
+     Device — це фізичний пристрій, встановлений у робочому місці (workplace), який може:
+* видавати медикаменти
+* приймати команди
+* відправляти журнали роботи (DeviceLog)
+* відправляти події видачі (DispenseEvent)
+     Пристрій прив’язаний до одного workplace.
+     Модель DeviceLog
+     Пристрій періодично надсилає журнали (логи), що містять:
+* технічні повідомлення
+* статус системи
+* дані сенсорів
+* діагностичну інформацію
+     Кожен лог прив’язаний до Device через device_id.
+     Модель DispenseEvent
+Подія видачі медикаменту пристроєм.
+Містить:
+* кількість виданого
+* час видачі
+* ціну
+* пацієнта
+* лікаря
+* рецепт
+* медикамент
+* пристрій
+     Це ключова сутність, що фіксує факт видачі медикаментів пацієнтам.
+     Модель Specialization
+     Спеціальність лікаря (педіатр, терапевт, кардіолог тощо). Одна спеціалізація може належати багатьом лікарям.
+     Модель Position
+     Посада лікаря (ординатор, головний лікар, медичний асистент тощо). Може повторюватися для багатьох лікарів.
+     Для серверної частини системи буде розроблено UML-діаграму прецедентів, яка відображатиме основні сценарії взаємодії користувачів із системою. На діаграмі будуть показані ключові дії, які можуть виконувати різні типи користувачів, а також загальна логіка їхньої взаємодії з серверним функціоналом (див. рис. 3.2).
+
+Рисунок 3.2- UML діаграма прецедентів для серверної частини системи
+     Створимо ER діаграму даних. Визначимо сутності, атрибути та зв’язки між ними у БД. Використаємо ER діаграму для наочного відображення структури даних (див. рис. 3.3).
+
+Рисунок 3.3- ER діаграма для відображення структури даних
+     На основі ER-діаграми було виконано проєктування таблиць бази даних (див. додаток В). У першій нормальній формі (1NF) кожен стовпець повинен містити лише атомарні значення, не допускаються повторювані групи, а всі записи мають бути унікальними. У створеній моделі всі сутності розділено на окремі таблиці, а їхні атрибути вже подані як неподільні. Відсутні складені значення, масиви чи дубльовані колонки. Таким чином, структура даних повністю відповідає вимогам 1NF.
+     Друга нормальна форма (2NF) передбачає відповідність 1NF і забороняє часткові залежності від складеного первинного ключа. Оскільки у схемі застосовані штучні (сурогатні) первинні ключі та немає жодного складеного ключа, часткові залежності виключені. Усі атрибути залежать від одного цілісного первинного ключа, тому вимоги 2NF також виконано.
+     Третя нормальна форма (3NF) додатково вимагає відсутності транзитивних залежностей, коли неключовий атрибут визначається іншим неключовим атрибутом. У запропонованій структурі немає атрибутів, що описують інші неключові поля; усі логічні зв’язки між сутностями реалізовано через зовнішні ключі. Отже, транзитивні залежності відсутні, і схема повністю відповідає 3NF.
+     Побудуємо діаграму структури бази даних. На ній відображено всі таблиці, їхні взаємозв’язки та ключові атрибути (див. рис. 3.4).
+
+Рисунок 3.4- Діаграма структури БД
+     При реалізації API було використано REST. Далі наведено ендпоінти які були реалізовані.
+
+Рисунок 3.5- Ендпоінти авторизації
+
+Рисунок 3.6- Ендпоінти управління пристроями та їх логуванням
+
+Рисунок 3.7- Ендпоінти управління випадків видачі ліків
+
+Рисунок 3.8- Ендпоінти управління лікарями
+
+Рисунок 3.9- Ендпоінти управління формами ліків
+
+Рисунок 3.10- Ендпоінти управління виробниками
+
+Рисунок 3.11- Ендпоінти управління медичними записами
+
+Рисунок 3.12- Ендпоінти управління медикаментами
+
+Рисунок 3.13- Ендпоінти управління пацієнтами
+
+Рисунок 3.14- Ендпоінти управління позиціями
+
+Рисунок 3.15- Ендпоінти управління спеціалізаціями
+
+Рисунок 3.16- Ендпоінти управління робочими місцями
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+4 ВИСНОВКИ
+     У результаті виконання лабораторної роботи було вивчено та реалізовано повний цикл розробки серверної частини програмної системи: спроєктовано базу даних, розроблено API для взаємодії з клієнтськими застосунками та проведено їх тестування. Також набуті навички створення UML- і ER-діаграм, проєктування БД, програмної реалізації API, роботи з Git-репозиторіями та підготовки технічної документаці
+5 ВИКОРИСТАНІ ДЖЕРЕЛА
+1. Методичні вказівки до лабораторних робіт з дисципліни «Аналіз та рефакторинг коду програмного забезпечення» (дата звернення: 23.10.2025).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК А
+Відеозапис
+Відеозапис презентації результатів лабораторної роботи: https://youtu.be/OrxWMtiFbV8
+Хронологічний опис відеозапису:
+00:00 – Вступ 
+01:15 – Опис виконаної роботи 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК В
+Програмний код
+GitHub репозиторій: https://github.com/NureTsyselskyiAndrii/ark-pzpi-23-4-tsyselskyi-andrii/blob/main/Lab2/ark-pzpi-23-4-tsyselskyi-andrii-lab2
+В.1 Код для створення бд за допомогою ORM EF Core.
+1. public class DeviceConfiguration : IEntityTypeConfiguration<Device>
+2. {
+3.     public void Configure(EntityTypeBuilder<Device> builder)
+4.     {
+5.         builder.HasKey(d => d.Id);
+6. 
+7.         builder.Property(d => d.Name)
+8.                .IsRequired()
+9.                .HasMaxLength(255);
+10. 
+11.         builder.Property(d => d.WorkplaceId)
+12.                .IsRequired();
+13.         builder.HasOne(d => d.Workplace)
+14.                .WithMany(wp => wp.Devices)
+15.                .HasForeignKey(d => d.WorkplaceId)
+16.                .OnDelete(DeleteBehavior.Cascade)
+17.                .IsRequired();
+18.     }
+19. }
+20. public class DeviceLogConfiguration : IEntityTypeConfiguration<DeviceLog>
+21. {
+22.     public void Configure(EntityTypeBuilder<DeviceLog> builder)
+23.     {
+24.         builder.HasKey(dl => dl.Id);
+25. 
+26.         builder.Property(dl => dl.Description)
+27.                .IsRequired()
+28.                .HasMaxLength(4095);
+29. 
+30.         builder.Property(dl => dl.DeviceId)
+31.                .IsRequired();
+32.         builder.HasOne(dl => dl.Device)
+33.                .WithMany(d => d.DeviceLogs)
+34.                .HasForeignKey(dl => dl.DeviceId)
+35.                .OnDelete(DeleteBehavior.Cascade)
+36.                .IsRequired();
+37.     }
+38. }
+39. public class DispenseEventConfiguration : IEntityTypeConfiguration<DispenseEvent>
+40. {
+41.     public void Configure(EntityTypeBuilder<DispenseEvent> builder)
+42.     {
+43.         builder.HasKey(de => de.Id);
+44. 
+45.         builder.Property(de => de.DispensedAt)
+46.                .IsRequired()
+47.                .HasDefaultValueSql("getdate()");
+48. 
+49.         builder.Property(de => de.QuantityDispensed)
+50.                .IsRequired();
+51. 
+52.         builder.Property(de => de.Price)
+53.                .IsRequired();
+54. 
+55.         builder.ToTable(t =>
+56.         {
+57.             t.HasCheckConstraint("CK_DispenseEvent_QuantityDispensed_Positive", "[QuantityDispensed] >= 0");
+58.             t.HasCheckConstraint("CK_DispenseEvent_Price_Positive", "[Price] >= 0");
+59.         });
+60. 
+61.         builder.Property(de => de.PrescriptionId)
+62.                .IsRequired();
+63.         builder.HasOne(de => de.Prescription)
+64.                .WithMany(p => p.DispenseEvents)
+65.                .HasForeignKey(de => de.PrescriptionId)
+66.                .OnDelete(DeleteBehavior.NoAction)  // ----- Attention -----
+67.                .IsRequired();
+68. 
+69.         builder.Property(de => de.DoctorId)
+70.                .IsRequired();
+71.         builder.HasOne(de => de.Doctor)
+72.                .WithMany(d => d.DispenseEvents)
+73.                .HasForeignKey(de => de.DoctorId)
+74.                .OnDelete(DeleteBehavior.Cascade)
+75.                .IsRequired();
+76. 
+77.         builder.Property(de => de.PatientId)
+78.                .IsRequired();
+79.         builder.HasOne(de => de.Patient)
+80.                .WithMany(p => p.DispenseEvents)
+81.                .HasForeignKey(de => de.PatientId)
+82.                .OnDelete(DeleteBehavior.NoAction)  // ----- Attention -----
+83.                .IsRequired();
+84. 
+85.         builder.Property(de => de.MedicationId)
+86.               .IsRequired();
+87.         builder.HasOne(de => de.Medication)
+88.                .WithMany(m => m.DispenseEvents)
+89.                .HasForeignKey(de => de.MedicationId)
+90.                .OnDelete(DeleteBehavior.Cascade)
+91.                .IsRequired();
+92. 
+93.         builder.Property(de => de.DeviceId)
+94.                .IsRequired();
+95.         builder.HasOne(de => de.Device)
+96.                .WithMany(d => d.DispenseEvents)
+97.                .HasForeignKey(de => de.DeviceId)
+98.                .OnDelete(DeleteBehavior.Cascade)
+99.                .IsRequired();
+100.     }
+101. }
+102. public class DoctorConfiguration : IEntityTypeConfiguration<Doctor>
+103. {
+104.     public void Configure(EntityTypeBuilder<Doctor> builder)
+105.     {
+106.         builder.HasKey(d => d.Id);
+107. 
+108.         builder.Property(d => d.LicenseNumber)
+109.                .IsRequired()
+110.                .HasMaxLength(511);
+111. 
+112.         builder.Property(d => d.UserId)
+113.                .IsRequired();
+114.         builder.HasIndex(d => d.UserId, "IX_Doctors_UserId")
+115.                .IsUnique();
+116.         builder.HasOne(d => d.User)
+117.                .WithOne(u => u.Doctor)
+118.                .HasForeignKey<Doctor>(d => d.UserId)
+119.                .OnDelete(DeleteBehavior.Cascade)
+120.                .IsRequired();
+121. 
+122.         builder.Property(d => d.SpecializationId)
+123.                .IsRequired();
+124.         builder.HasOne(d => d.Specialization)
+125.                .WithMany(s => s.Doctors)
+126.                .HasForeignKey(d => d.SpecializationId)
+127.                .OnDelete(DeleteBehavior.Restrict)
+128.                .IsRequired();
+129. 
+130.         builder.Property(d => d.WorkplaceId)
+131.                .IsRequired();
+132.         builder.HasOne(d => d.Workplace)
+133.                .WithMany(w => w.Doctors)
+134.                .HasForeignKey(d => d.WorkplaceId)
+135.                .OnDelete(DeleteBehavior.Restrict)
+136.                .IsRequired();
+137. 
+138.         builder.Property(d => d.PositionId)
+139.                .IsRequired();
+140.         builder.HasOne(d => d.Position)
+141.                .WithMany(p => p.Doctors)
+142.                .HasForeignKey(d => d.PositionId)
+143.                .OnDelete(DeleteBehavior.Restrict)
+144.                .IsRequired();
+145. 
+146.         var doctors = new List<Doctor>
+147.         {
+148.             new Doctor
+149.             {
+150.                 Id = 1,
+151.                 UserId = 2,
+152.                 LicenseNumber = "LIC-2024-001",
+153.                 SpecializationId = 1,
+154.                 WorkplaceId = 1,
+155.                 PositionId = 1
+156.             },
+157.             new Doctor
+158.             {
+159.                 Id = 2,
+160.                 UserId = 3,
+161.                 LicenseNumber = "LIC-2024-002",
+162.                 SpecializationId = 3,
+163.                 WorkplaceId = 1,
+164.                 PositionId = 3
+165.             }
+166.         };
+167.         builder.HasData(doctors);
+168.     }
+169. }
+170. public class FormConfiguration : IEntityTypeConfiguration<Form>
+171. {
+172.     public void Configure(EntityTypeBuilder<Form> builder)
+173.     {
+174.         builder.HasKey(f => f.Id);
+175. 
+176.         builder.Property(f => f.Name)
+177.                .IsRequired()
+178.                .HasMaxLength(255);
+179. 
+180.         var forms = new List<Form>
+181.         {
+182.             new Form { Id = 1, Name = "Tablet" },
+183.             new Form { Id = 2, Name = "Capsule" },
+184.             new Form { Id = 3, Name = "Syrup" },
+185.             new Form { Id = 4, Name = "Injection" },
+186.             new Form { Id = 5, Name = "Ointment" }
+187.         };
+188. 
+189.         builder.HasData(forms);
+190.     }
+191. }
+192. public class ManufacturerConfiguration : IEntityTypeConfiguration<Manufacturer>
+193. {
+194.     public void Configure(EntityTypeBuilder<Manufacturer> builder)
+195.     {
+196.         builder.HasKey(m => m.Id);
+197. 
+198.         builder.Property(m => m.Name)
+199.                .IsRequired()
+200.                .HasMaxLength(255);
+201. 
+202.         var manufacturers = new List<Manufacturer>
+203.         {
+204.             new Manufacturer { Id = 1, Name = "Pfizer" },
+205.             new Manufacturer { Id = 2, Name = "Moderna" },
+206.             new Manufacturer { Id = 3, Name = "Bayer" },
+207.             new Manufacturer { Id = 4, Name = "Novartis" },
+208.             new Manufacturer { Id = 5, Name = "Johnson & Johnson" }
+209.         };
+210.         builder.HasData(manufacturers);
+211.     }
+212. }
+213. public class MedicalRecordConfiguration : IEntityTypeConfiguration<MedicalRecord>
+214. {
+215.     public void Configure(EntityTypeBuilder<MedicalRecord> builder)
+216.     {
+217.         builder.HasKey(mr => mr.Id);
+218. 
+219.         builder.Property(mr => mr.Description)
+220.                .IsRequired()
+221.                .HasMaxLength(4095);
+222. 
+223.         builder.Property(mr => mr.PatientId)
+224.                .IsRequired();
+225.         builder.HasOne(mr => mr.Patient)
+226.                .WithMany(p => p.MedicalRecords)
+227.                .HasForeignKey(mr => mr.PatientId)
+228.                .OnDelete(DeleteBehavior.Cascade)
+229.                .IsRequired();
+230. 
+231.         var medicalRecords = new List<MedicalRecord>
+232.         {
+233.             new MedicalRecord
+234.             {
+235.                 Id = 1,
+236.                 PatientId = 1,
+237.                 Description = "General check-up. Slight anemia noted. Recommended vitamins."
+238.             },
+239.             new MedicalRecord
+240.             {
+241.                 Id = 2,
+242.                 PatientId = 2,
+243.                 Description = "Routine examination. No abnormalities detected."
+244.             }
+245.         };
+246. 
+247.         builder.HasData(medicalRecords);
+248.     }
+249. }
+250. public class MedicationConfiguration : IEntityTypeConfiguration<Medication>
+251. {
+252.     public void Configure(EntityTypeBuilder<Medication> builder)
+253.     {
+254.         builder.HasKey(m => m.Id);
+255. 
+256.         builder.Property(m => m.Name)
+257.                .IsRequired()
+258.                .HasMaxLength(255);
+259. 
+260.         builder.Property(m => m.Barcode)
+261.                .IsRequired()
+262.                .HasMaxLength(255);
+263. 
+264.         builder.HasIndex(m => m.Barcode).IsUnique();
+265. 
+266.         builder.Property(m => m.Description)
+267.                .IsRequired(false)
+268.                .HasMaxLength(4095);
+269. 
+270.         builder.Property(m => m.StorageConditions)
+271.               .IsRequired(false)
+272.               .HasMaxLength(4095);
+273. 
+274.         builder.Property(m => m.Contraindications)
+275.               .IsRequired(false)
+276.               .HasMaxLength(4095);
+277. 
+278.         builder.Property(m => m.SideEffects)
+279.               .IsRequired(false)
+280.               .HasMaxLength(4095);
+281. 
+282.         builder.Property(m => m.StrengthAmount)
+283.                .IsRequired();
+284. 
+285.         builder.Property(m => m.StrengthUnit)
+286.               .IsRequired()
+287.               .HasMaxLength(31);
+288. 
+289.         builder.Property(m => m.StrengthBase)
+290.               .IsRequired()
+291.               .HasMaxLength(63);
+292. 
+293.         builder.Property(m => m.VolumePerBlister)
+294.               .IsRequired();
+295. 
+296.         builder.Property(m => m.VolumePerPackage)
+297.               .IsRequired();
+298. 
+299.         builder.Property(m => m.VolumeUnit)
+300.               .IsRequired()
+301.               .HasMaxLength(31);
+302. 
+303.         builder.Property(m => m.PricePerBlister)
+304.               .IsRequired();
+305. 
+306.         builder.ToTable(t =>
+307.         {
+308.             t.HasCheckConstraint("CK_Medication_StrengthAmount_Positive", "[StrengthAmount] > 0");
+309.             t.HasCheckConstraint("CK_Medication_VolumePerBlister_Positive", "[VolumePerBlister] >= 0");
+310.             t.HasCheckConstraint("CK_Medication_VolumePerPackage_Positive", "[VolumePerPackage] >= 0");
+311.             t.HasCheckConstraint("CK_Medication_PricePerBlister_Positive", "[PricePerBlister] >= 0");
+312.         });
+313. 
+314.         builder.Property(m => m.ImageUrl)
+315.                .IsRequired(false)
+316.                .HasMaxLength(511);
+317. 
+318.         builder.Property(m => m.ManufacturerId)
+319.                .IsRequired();
+320.         builder.HasOne(m => m.Manufacturer)
+321.                .WithMany(m => m.Medications)
+322.                .HasForeignKey(m => m.ManufacturerId)
+323.                .OnDelete(DeleteBehavior.Restrict)
+324.                .IsRequired();
+325. 
+326.         builder.Property(m => m.FormId)
+327.                .IsRequired();
+328.         builder.HasOne(m => m.Form)
+329.                .WithMany(f => f.Medications)
+330.                .HasForeignKey(m => m.FormId)
+331.                .OnDelete(DeleteBehavior.Restrict)
+332.                .IsRequired();
+333. 
+334.         var medications = new List<Medication>
+335.         {
+336.             new Medication
+337.             {
+338.                 Id = 1,
+339.                 Name = "Paracetamol",
+340.                 Barcode = "1234567890123",
+341.                 Description = "Pain reliever and fever reducer.",
+342.                 StorageConditions = "Store at room temperature.",
+343.                 Contraindications = "Liver disease.",
+344.                 SideEffects = "Nausea, dizziness.",
+345.                 StrengthAmount = 500,
+346.                 StrengthUnit = "mg",
+347.                 StrengthBase = "per tablet",
+348.                 VolumePerBlister = 12,
+349.                 VolumePerPackage = 5,
+350.                 VolumeUnit = "tablets",
+351.                 PricePerBlister = 2.50m,
+352.                 ManufacturerId = 3,
+353.                 FormId = 1
+354.             },
+355.             new Medication
+356.             {
+357.                 Id = 2,
+358.                 Name = "Ibuprofen",
+359.                 Barcode = "9876543210987",
+360.                 Description = "Anti-inflammatory and analgesic.",
+361.                 StorageConditions = "Store in dry place.",
+362.                 Contraindications = "Ulcer, kidney disease.",
+363.                 SideEffects = "Stomach upset.",
+364.                 StrengthAmount = 200,
+365.                 StrengthUnit = "mg",
+366.                 StrengthBase = "per tablet",
+367.                 VolumePerBlister = 10,
+368.                 VolumePerPackage = 4,
+369.                 VolumeUnit = "tablets",
+370.                 PricePerBlister = 3.00m,
+371.                 ManufacturerId = 3,
+372.                 FormId = 1
+373.             },
+374.             new Medication
+375.             {
+376.                 Id = 3,
+377.                 Name = "Omeprazole",
+378.                 Barcode = "5551237770001",
+379.                 Description = "Reduces stomach acid.",
+380.                 StorageConditions = "Keep away from sunlight.",
+381.                 Contraindications = "Pregnancy unless prescribed.",
+382.                 SideEffects = "Headache, diarrhea.",
+383.                 StrengthAmount = 20,
+384.                 StrengthUnit = "mg",
+385.                 StrengthBase = "per capsule",
+386.                 VolumePerBlister = 7,
+387.                 VolumePerPackage = 4,
+388.                 VolumeUnit = "capsules",
+389.                 PricePerBlister = 4.20m,
+390.                 ManufacturerId = 4,
+391.                 FormId = 2
+392.             },
+393.             new Medication
+394.             {
+395.                 Id = 4,
+396.                 Name = "Azithromycin",
+397.                 Barcode = "2223334445556",
+398.                 Description = "Antibiotic for bacterial infections.",
+399.                 StorageConditions = "Store below 25°C.",
+400.                 Contraindications = "Heart rhythm disorders.",
+401.                 SideEffects = "Diarrhea, abdominal pain.",
+402.                 StrengthAmount = 500,
+403.                 StrengthUnit = "mg",
+404.                 StrengthBase = "per tablet",
+405.                 VolumePerBlister = 3,
+406.                 VolumePerPackage = 3,
+407.                 VolumeUnit = "tablets",
+408.                 PricePerBlister = 5.70m,
+409.                 ManufacturerId = 5,
+410.                 FormId = 1
+411.             },
+412.             new Medication
+413.             {
+414.                 Id = 5,
+415.                 Name = "Dexpanthenol",
+416.                 Barcode = "1119993337770",
+417.                 Description = "Skin regeneration ointment.",
+418.                 StorageConditions = "Store below 25°C.",
+419.                 Contraindications = "Hypersensitivity.",
+420.                 SideEffects = "Local irritation.",
+421.                 StrengthAmount = 5,
+422.                 StrengthUnit = "%",
+423.                 StrengthBase = "ointment",
+424.                 VolumePerBlister = 1,
+425.                 VolumePerPackage = 1,
+426.                 VolumeUnit = "tube",
+427.                 PricePerBlister = 6.00m,
+428.                 ManufacturerId = 2,
+429.                 FormId = 5
+430.             }
+431.         };
+432.         builder.HasData(medications);
+433.     }
+434. }
+435. public class MedicationStockConfiguration : IEntityTypeConfiguration<MedicationStock>
+436. {
+437.     public void Configure(EntityTypeBuilder<MedicationStock> builder)
+438.     {
+439.         builder.HasKey(ms => ms.Id);
+440. 
+441.         builder.Property(ms => ms.Quantity)
+442.                .IsRequired();
+443. 
+444.         builder.Property(ms => ms.ProductionDate)
+445.                .IsRequired()
+446.                .HasDefaultValueSql("getdate()");
+447. 
+448.         builder.Property(ms => ms.ExpirationDate)
+449.                .IsRequired()
+450.                .HasDefaultValueSql("getdate()");
+451. 
+452.         builder.Property(ms => ms.ReceivedAt)
+453.                .IsRequired()
+454.                .HasDefaultValueSql("getdate()");
+455. 
+456.         builder.ToTable(t =>
+457.         {
+458.             t.HasCheckConstraint("CK_MedicationStock_Quantity_Positive", "[Quantity] > 0");
+459.         });
+460. 
+461.         builder.Property(ms => ms.MedicationId)
+462.                .IsRequired();
+463.         builder.HasOne(ms => ms.Medication)
+464.                .WithMany(m => m.MedicationStocks)
+465.                .HasForeignKey(ms => ms.MedicationId)
+466.                .OnDelete(DeleteBehavior.Cascade)
+467.                .IsRequired();
+468. 
+469.         builder.Property(ms => ms.WorkplaceId)
+470.                .IsRequired();
+471.         builder.HasOne(ms => ms.Workplace)
+472.                .WithMany(wp => wp.MedicationStocks)
+473.                .HasForeignKey(ms => ms.WorkplaceId)
+474.                .OnDelete(DeleteBehavior.Cascade)
+475.                .IsRequired();
+476. 
+477.         var medicationStocks = new List<MedicationStock>
+478.         {
+479.             new MedicationStock
+480.             {
+481.                 Id = 1,
+482.                 MedicationId = 1,
+483.                 WorkplaceId = 1,
+484.                 Quantity = 200,
+485.                 ProductionDate = new DateTime(2024, 05, 01),
+486.                 ExpirationDate = new DateTime(2027, 05, 01),
+487.                 ReceivedAt = new DateTime(2024, 06, 10)
+488.             },
+489.             new MedicationStock
+490.             {
+491.                 Id = 2,
+492.                 MedicationId = 2,
+493.                 WorkplaceId = 1,
+494.                 Quantity = 150,
+495.                 ProductionDate = new DateTime(2024, 03, 15),
+496.                 ExpirationDate = new DateTime(2027, 03, 15),
+497.                 ReceivedAt = new DateTime(2024, 04, 01)
+498.             },
+499.             new MedicationStock
+500.             {
+501.                 Id = 3,
+502.                 MedicationId = 3,
+503.                 WorkplaceId = 1,
+504.                 Quantity = 100,
+505.                 ProductionDate = new DateTime(2024, 10, 10),
+506.                 ExpirationDate = new DateTime(2027, 10, 10),
+507.                 ReceivedAt = new DateTime(2024, 11, 05)
+508.             },
+509.             new MedicationStock
+510.             {
+511.                 Id = 4,
+512.                 MedicationId = 4,
+513.                 WorkplaceId = 1,
+514.                 Quantity = 50,
+515.                 ProductionDate = new DateTime(2023, 01, 20),
+516.                 ExpirationDate = new DateTime(2027, 01, 20),
+517.                 ReceivedAt = new DateTime(2024, 02, 10)
+518.             },
+519.             new MedicationStock
+520.             {
+521.                 Id = 5,
+522.                 MedicationId = 5,
+523.                 WorkplaceId = 1,
+524.                 Quantity = 80,
+525.                 ProductionDate = new DateTime(2024, 07, 12),
+526.                 ExpirationDate = new DateTime(2027, 07, 12),
+527.                 ReceivedAt = new DateTime(2024, 08, 01)
+528.             }
+529.         };
+530. 
+531.         builder.HasData(medicationStocks);
+532.     }
+533. }
+534. public class PatientConfiguration : IEntityTypeConfiguration<Patient>
+535. {
+536.     public void Configure(EntityTypeBuilder<Patient> builder)
+537.     {
+538.         builder.HasKey(p => p.Id);
+539. 
+540.         builder.Property(p => p.BloodType)
+541.                .IsRequired()
+542.                .HasMaxLength(31);
+543. 
+544.         builder.Property(p => p.UserId)
+545.                .IsRequired();
+546.         builder.HasIndex(p => p.UserId, "IX_Patients_UserId")
+547.                .IsUnique();
+548.         builder.HasOne(p => p.User)
+549.                .WithOne(u => u.Patient)
+550.                .HasForeignKey<Patient>(p => p.UserId)
+551.                .OnDelete(DeleteBehavior.Cascade)
+552.                .IsRequired();
+553. 
+554.         var patients = new List<Patient>
+555.         {
+556.             new Patient
+557.             {
+558.                 Id = 1,
+559.                 UserId = 4,
+560.                 BloodType = "A+"
+561.             },
+562.             new Patient
+563.             {
+564.                 Id = 2,
+565.                 UserId = 5,
+566.                 BloodType = "O-"
+567.             }
+568.         };
+569.         builder.HasData(patients);
+570.     }
+571. }
+572. public class PositionConfiguration : IEntityTypeConfiguration<Position>
+573.  {
+574.      public void Configure(EntityTypeBuilder<Position> builder)
+575.      {
+576.          builder.HasKey(p => p.Id);
+577. 
+578.          builder.Property(p => p.Name)
+579.                 .IsRequired()
+580.                 .HasMaxLength(255);
+581. 
+582.          var positions = new List<Position>
+583.          {
+584.              new Position { Id = 1, Name = "Senior Doctor" },
+585.              new Position { Id = 2, Name = "Junior Doctor" },
+586.              new Position { Id = 3, Name = "Consultant" },
+587.              new Position { Id = 4, Name = "Intern" },
+588.              new Position { Id = 5, Name = "Head of Department" }
+589.          };
+590.          builder.HasData(positions);
+591.      }
+592.  }
+593. public class PrescriptionConfiguration : IEntityTypeConfiguration<Prescription>
+594. {
+595.     public void Configure(EntityTypeBuilder<Prescription> builder)
+596.     {
+597.         builder.HasKey(p => p.Id);
+598. 
+599.         builder.Property(u => u.StartDate)
+600.                .IsRequired()
+601.                .HasDefaultValueSql("getdate()");
+602. 
+603.         builder.Property(u => u.EndDate)
+604.                .IsRequired()
+605.                .HasDefaultValueSql("getdate()");
+606. 
+607.         builder.Property(p => p.DoctorId)
+608.                .IsRequired();
+609.         builder.HasOne(p => p.Doctor)
+610.                .WithMany(d => d.Prescriptions)
+611.                .HasForeignKey(p => p.DoctorId)
+612.                .OnDelete(DeleteBehavior.Cascade)
+613.                .IsRequired();
+614. 
+615.         builder.Property(p => p.PatientId)
+616.                .IsRequired();
+617.         builder.HasOne(p => p.Patient)
+618.                .WithMany(p => p.Prescriptions)
+619.                .HasForeignKey(p => p.PatientId)
+620.                .OnDelete(DeleteBehavior.NoAction)  // ------ Attention here ------
+621.                .IsRequired();
+622. 
+623. 
+624.         var prescriptions = new List<Prescription>
+625.         {
+626.             new Prescription
+627.             {
+628.                 Id = 1,
+629.                 PatientId = 1,
+630.                 DoctorId = 1,
+631.                 StartDate = new DateTime(2024, 01, 10),
+632.                 EndDate = new DateTime(2024, 02, 10)
+633.             },
+634.             new Prescription
+635.             {
+636.                 Id = 2,
+637.                 PatientId = 2,
+638.                 DoctorId = 2,
+639.                 StartDate = new DateTime(2024, 03, 05),
+640.                 EndDate = new DateTime(2024, 03, 20)
+641.             }
+642.         };
+643. 
+644.         builder.HasData(prescriptions);
+645.     }
+646. }
+647. public class PrescriptionMedicationConfiguration : IEntityTypeConfiguration<PrescriptionMedication>
+648.  {
+649.      public void Configure(EntityTypeBuilder<PrescriptionMedication> builder)
+650.      {
+651.          builder.HasKey(pm => pm.Id);
+652. 
+653.          builder.Property(pm => pm.Dosage)
+654.                 .IsRequired();
+655. 
+656.          builder.Property(pm => pm.QuantityOfDosagesOverall)
+657.                 .IsRequired();
+658. 
+659.          builder.Property(pm => pm.PeriodInDays)
+660.                 .IsRequired();
+661. 
+662.          builder.Property(pm => pm.Description)
+663.                 .IsRequired(false)
+664.                 .HasMaxLength(4095);
+665. 
+666.          builder.Property(pm => pm.Discount)
+667.                 .IsRequired()
+668.                 .HasDefaultValue(0);
+669. 
+670.          builder.ToTable(t =>
+671.          {
+672.              t.HasCheckConstraint("CK_PrescriptionMedication_Dosage_Positive", "[Dosage] > 0");
+673.              t.HasCheckConstraint("CK_PrescriptionMedication_QuantityOfDosagesOverall_Positive", "[QuantityOfDosagesOverall] > 0");
+674.              t.HasCheckConstraint("CK_PrescriptionMedication_PeriodInDays_Positive", "[PeriodInDays] > 0");
+675.              t.HasCheckConstraint("CK_PrescriptionMedication_Discount_Positive", "[Discount] >= 0");
+676.          });
+677. 
+678.          builder.Property(pm => pm.PrescriptionId)
+679.                 .IsRequired();
+680.          builder.HasOne(pm => pm.Prescription)
+681.                 .WithMany(p => p.PrescriptionMedications)
+682.                 .HasForeignKey(pm => pm.PrescriptionId)
+683.                 .OnDelete(DeleteBehavior.Cascade)
+684.                 .IsRequired();
+685. 
+686.          builder.Property(pm => pm.MedicationId)
+687.                 .IsRequired();
+688.          builder.HasOne(pm => pm.Medication)
+689.                 .WithMany(m => m.PrescriptionMedications)
+690.                 .HasForeignKey(pm => pm.MedicationId)
+691.                 .OnDelete(DeleteBehavior.Cascade)
+692.                 .IsRequired();
+693. 
+694.          var prescriptionMedications = new List<PrescriptionMedication>
+695.          {
+696.              new PrescriptionMedication
+697.              {
+698.                  Id = 1,
+699.                  PrescriptionId = 1,
+700.                  MedicationId = 1,
+701.                  Dosage = 500,
+702.                  QuantityOfDosagesOverall = 20,
+703.                  PeriodInDays = 10,
+704.                  Description = "Take one tablet twice a day after meals.",
+705.                  Discount = 0.00m
+706.              },
+707.              new PrescriptionMedication
+708.              {
+709.                  Id = 2,
+710.                  PrescriptionId = 2,
+711.                  MedicationId = 2,
+712.                  Dosage = 200,
+713.                  QuantityOfDosagesOverall = 15,
+714.                  PeriodInDays = 5,
+715.                  Description = "Use for pain relief when necessary.",
+716.                  Discount = 10.00m
+717.              }
+718.          };
+719. 
+720.          builder.HasData(prescriptionMedications);
+721.      }
+722.  }
+723. public class SpecializationConfiguration : IEntityTypeConfiguration<Specialization>
+724. {
+725.     public void Configure(EntityTypeBuilder<Specialization> builder)
+726.     {
+727.         builder.HasKey(s => s.Id);
+728. 
+729.         builder.Property(s => s.Name)
+730.                .IsRequired()
+731.                .HasMaxLength(255);
+732. 
+733.         var specializations = new List<Specialization>
+734.         {
+735.             new Specialization { Id = 1, Name = "Cardiologist" },
+736.             new Specialization { Id = 2, Name = "Neurologist" },
+737.             new Specialization { Id = 3, Name = "Dermatologist" },
+738.             new Specialization { Id = 4, Name = "Pediatrician" },
+739.             new Specialization { Id = 5, Name = "General Physician" }
+740.         };
+741.         builder.HasData(specializations);
+742.     }
+743. }
+744. public class UserConfiguration : IEntityTypeConfiguration<User>
+745.  {
+746.      public void Configure(EntityTypeBuilder<User> builder)
+747.      {
+748.          builder.HasKey(u => u.Id);
+749. 
+750.          builder.Property(u => u.Id)
+751.                 .ValueGeneratedNever();
+752. 
+753.          builder.Property(x => x.FirstName)
+754.                 .IsRequired()
+755.                 .HasMaxLength(255);
+756. 
+757.          builder.Property(x => x.LastName)
+758.                 .IsRequired()
+759.                 .HasMaxLength(255);
+760. 
+761.          builder.Property(x => x.Email)
+762.                 .IsRequired()
+763.                 .HasMaxLength(511);
+764. 
+765.          builder.HasIndex(u => u.Email)
+766.                 .IsUnique();
+767. 
+768.          builder.Property(x => x.UserName)
+769.                 .IsRequired()
+770.                 .HasMaxLength(511);
+771. 
+772.          builder.HasIndex(u => u.UserName)
+773.                 .IsUnique();
+774. 
+775.          builder.Property(u => u.CreatedDate)
+776.                 .IsRequired()
+777.                 .HasDefaultValueSql("getdate()");
+778. 
+779.          builder.Property(c => c.Biography)
+780.                 .IsRequired(false)
+781.                 .HasMaxLength(1023);
+782. 
+783.          builder.Property(c => c.BirthDate)
+784.                 .IsRequired(false);
+785. 
+786.          builder.Property(c => c.PhoneNumber)
+787.                 .IsRequired(false)
+788.                 .HasMaxLength(31);
+789. 
+790.          builder.Property(c => c.AvatarUrl)
+791.                 .IsRequired(false)
+792.                 .HasMaxLength(511);
+793. 
+794.          var users = new List<User>
+795.          {
+796.              new User
+797.              {
+798.                  Id = 1L,
+799.                  FirstName = "Andrey",
+800.                  LastName = "Tsyselskyi",
+801.                  UserName = "Admin",
+802.                  Email = "tsyselskyiandrey@gmail.com",
+803.                  PhoneNumber = "+380682488040",
+804.                  CreatedDate = DateTime.UtcNow,
+805.                  Biography = "System administrator",
+806.                  BirthDate = new DateTime(1997, 01, 01)
+807.              },
+808.              new User
+809.              {
+810.                  Id = 2L,
+811.                  FirstName = "John",
+812.                  LastName = "Doe",
+813.                  UserName = "JohnDoe",
+814.                  Email = "john.doe@example.com",
+815.                  PhoneNumber = "+380501112233",
+816.                  CreatedDate = DateTime.UtcNow,
+817.                  Biography = "Experienced surgeon",
+818.                  BirthDate = new DateTime(1990, 05, 10)
+819.              },
+820.              new User
+821.              {
+822.                  Id = 3L,
+823.                  FirstName = "Anna",
+824.                  LastName = "Smith",
+825.                  UserName = "AnnaSmith",
+826.                  Email = "anna.smith@example.com",
+827.                  PhoneNumber = "+380631234567",
+828.                  CreatedDate = DateTime.UtcNow,
+829.                  Biography = "Caring nurse",
+830.                  BirthDate = new DateTime(1995, 10, 15)
+831.              },
+832.              new User
+833.              {
+834.                  Id = 4L,
+835.                  FirstName = "Michael",
+836.                  LastName = "Brown",
+837.                  UserName = "MikeBrown",
+838.                  Email = "michael.brown@example.com",
+839.                  PhoneNumber = "+380973456789",
+840.                  CreatedDate = DateTime.UtcNow,
+841.                  Biography = "Fitness fan & healthy lifestyle supporter",
+842.                  BirthDate = new DateTime(1988, 03, 22)
+843.              },
+844.              new User
+845.              {
+846.                  Id = 5L,
+847.                  FirstName = "Kate",
+848.                  LastName = "Jordan",
+849.                  UserName = "KateJordan",
+850.                  Email = "kate.jordan@example.com",
+851.                  PhoneNumber = "+380992223344",
+852.                  CreatedDate = DateTime.UtcNow,
+853.                  Biography = "Designer & creative thinker",
+854.                  BirthDate = new DateTime(1999, 12, 01)
+855.              }
+856.          };
+857. 
+858.          builder.HasData(users);
+859.      }
+860.  }
+861. public class WorkplaceConfiguration : IEntityTypeConfiguration<Workplace>
+862. {
+863.     public void Configure(EntityTypeBuilder<Workplace> builder)
+864.     {
+865.         builder.HasKey(wp => wp.Id);
+866. 
+867.         builder.Property(wp => wp.Name)
+868.                .IsRequired()
+869.                .HasMaxLength(255);
+870. 
+871.         builder.Property(wp => wp.Address)
+872.                .IsRequired()
+873.                .HasMaxLength(511);
+874. 
+875.         var workplaces = new List<Workplace>
+876.         {
+877.             new Workplace { Id = 1, Name = "City Hospital #1", Address = "123 Main St, Kyiv" },
+878.             new Workplace { Id = 2, Name = "Private Clinic 'HealthPlus'", Address = "45 Green Ave, Lviv" },
+879.             new Workplace { Id = 3, Name = "Regional Medical Center", Address = "81 Central Rd, Odesa" },
+880.             new Workplace { Id = 4, Name = "Family Clinic 'DobroMed'", Address = "14 Peace St, Dnipro" },
+881.             new Workplace { Id = 5, Name = "Diagnostic Center 'MedExpert'", Address = "27 Horizon Blvd, Kharkiv" }
+882.         };
+883.         builder.HasData(workplaces);
+884.     }
+885. }
+
+
+2
+
+
+
+
+
+
+
+
+
+
