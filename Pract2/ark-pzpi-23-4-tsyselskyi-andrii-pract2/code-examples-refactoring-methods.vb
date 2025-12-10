@@ -1,10 +1,10 @@
-Module Program
+п»їModule Program
     Sub Main(args As String())
 
 
     End Sub
 
-    ' поганий приклад
+    ' РїРѕРіР°РЅРёР№ РїСЂРёРєР»Р°Рґ
     Public Class ReportGenerator
         Public Sub GenerateReport(data As List(Of Integer))
             Console.WriteLine("Generating report...")
@@ -26,7 +26,7 @@ Module Program
         End Sub
     End Class
 
-    ' гарний приклад
+    ' РіР°СЂРЅРёР№ РїСЂРёРєР»Р°Рґ
     Public Class ReportGeneratorCorrected
         Public Sub GenerateReport(data As List(Of Integer))
             Console.WriteLine("Generating report...")
@@ -54,7 +54,7 @@ Module Program
     End Class
 
 
-    ' поганий приклад
+    ' РїРѕРіР°РЅРёР№ РїСЂРёРєР»Р°Рґ
     Public Class UserService
         Public Function DoIt(u As String, a As Integer) As Boolean
             If a > 18 Then
@@ -67,8 +67,8 @@ Module Program
         End Function
     End Class
 
-    ' гарний приклад
-    Public Class UserServiceСorrected
+    ' РіР°СЂРЅРёР№ РїСЂРёРєР»Р°Рґ
+    Public Class UserServiceРЎorrected
         Public Function IsUserAdult(userName As String, age As Integer) As Boolean
             If age > 18 Then
                 Console.WriteLine("User " & userName & " is adult.")
@@ -80,25 +80,25 @@ Module Program
         End Function
     End Class
 
-    ' поганий приклад
+    ' РїРѕРіР°РЅРёР№ РїСЂРёРєР»Р°Рґ
     Public Class PaymentProcessor
         Public Function ProcessPayment(type As String, amount As Double) As Double
             If type = "Card" Then
                 Console.WriteLine("Processing card payment...")
-                Return amount * 0.98 ' 2% комісія
+                Return amount * 0.98 ' 2% РєРѕРјС–СЃС–СЏ
             ElseIf type = "PayPal" Then
                 Console.WriteLine("Processing PayPal payment...")
-                Return amount * 0.96 ' 4% комісія
+                Return amount * 0.96 ' 4% РєРѕРјС–СЃС–СЏ
             ElseIf type = "Crypto" Then
                 Console.WriteLine("Processing crypto payment...")
-                Return amount * 0.9 ' 10% комісія
+                Return amount * 0.9 ' 10% РєРѕРјС–СЃС–СЏ
             Else
                 Throw New Exception("Unknown payment method")
             End If
         End Function
     End Class
 
-    ' гарний приклад
+    ' РіР°СЂРЅРёР№ РїСЂРёРєР»Р°Рґ
     Public MustInherit Class PaymentMethod
         Public MustOverride Function Process(amount As Double) As Double
     End Class
@@ -127,7 +127,7 @@ Module Program
         End Function
     End Class
 
-    Public Class PaymentProcessorСorrected
+    Public Class PaymentProcessorРЎorrected
         Public Function ProcessPayment(method As PaymentMethod, amount As Double) As Double
             Return method.Process(amount)
         End Function
