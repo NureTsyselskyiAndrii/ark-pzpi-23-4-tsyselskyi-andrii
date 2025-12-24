@@ -1,0 +1,1361 @@
+﻿Харківський національний університет радіоелектроніки
+Факультет комп’ютерних наук
+Катедра програмної інженерії
+
+
+Звіт
+з лабораторної роботи № 4
+з дисципліни «Аналіз та рефакторинг коду»
+на тему «Розробка бізнес логіки та функцій налаштування IoT клієнта»
+
+
+
+
+    Виконав:                                                                           Перевірив:
+ст. гр. ПЗПІ-23-4                                                              ст. викладач кафедри ПІ
+Цисельський Андрій                                            	         Сокорчук Ігор Петрович
+
+
+
+Харків 2025
+1 ІСТОРІЯ ЗМІН
+
+№ДатаВерсія звітуОпис змін та виправлень120.12.20250.1Зроблено звіт
+2 ЗАВДАННЯ
+     Метою лабораторної роботи є розробка програмного забезпечення для IoT або SmartDevice пристрою на базі сучасної платформи, придатної для створення вбудованих систем, з реалізацією розширеної функціональності відповідно до концепції IoT. Також метою є забезпечення взаємодії пристрою з іншими компонентами програмної системи з використанням сучасних протоколів обміну даними, а також набуття практичних навичок проєктування та програмування вбудованих систем. 
+3 ОПИС ВИКОНАНОЇ РОБОТИ
+     Темою проєкту для виконання лабораторних робіт є програмна система для зберігання та видачі пігулок у медичних закладах. 
+   IoT-клієнт Smart Medicine Dispenser – це програмне забезпечення на базі ESP32, яке працює на фізичному пристрої автоматичної видачі медикаментів та забезпечує:
+• Зчитування даних з сенсорів (DHT22 для температури та вологості)
+• Виконання команд видачі медикаментів через серво-привід
+• Обробку натискань кнопок (SCAN, CONFIRM, EMERGENCY)
+• Передачу телеметрії та подій на сервер через HTTP API
+• Підтримку стабільного WiFi з'єднання
+• Моніторинг власного стану та рівня інвентаря
+• Відображення інформації на LCD-дисплеї
+• Сигналізацію через LED-індикатори та buzzer
+   IoT-клієнт взаємодіє із ASP.NET Core сервером SafeDose API, який зберігає дані у БД через Entity Framework (таблиці Devices, DeviceLogs, DispenseEvents, Prescriptions, Medications). Пристрій використовує RESTful API endpoints для сканування рецептів (/api/iot/scan), реєстрації видачі (/api/iot/dispense), відправки статусу (/api/iot/status), логування подій (/api/iot/log) та оновлення інвентаря (/api/iot/inventory). Загальна схема взаємодії зображена на рисунку 3.1.
+
+
+Рисунок 3.1 - Схема взаємодії IoT пристроїв з серверною частиною
+
+     Модуль абстракції сенсорів у програмному забезпеченні пристрою реалізує уніфікований доступ до апаратних датчиків незалежно від особливостей їх реалізації. У даній системі модуль забезпечує ініціалізацію та зчитування показників температури й вологості з цифрового сенсора DHT22. Отримані значення проходять базову перевірку коректності, зокрема контроль на наявність помилкових або некоректних вимірювань. У разі виявлення недійсних даних використовуються резервні значення, що дозволяє забезпечити стабільну роботу пристрою та уникнути збоїв під час подальшої обробки або передачі інформації.
+     Модуль збору даних відповідає за періодичне отримання вимірювальних даних із сенсорів та формування телеметричної інформації. Збір показників здійснюється з використанням програмних таймерів на основі системного лічильника часу millis(), що дозволяє виконувати опитування без блокування основного циклу роботи пристрою. До складу зібраних даних входять значення температури, вологості, поточний стан пристрою, кількість медикаментів у сховищі та службова інформація про час роботи. Сформовані телеметричні структури використовуються для подальшої передачі на сервер та фіксації подій у журналі роботи пристрою. 
+     Модуль обробки даних реалізує логіку аналізу зібраної інформації та прийняття рішень на основі поточного стану системи. Він відповідає за виявлення нештатних і аварійних ситуацій, зокрема помилок з’єднання, недійсних даних сенсорів, перевищення часу підтвердження операції, а також зменшення запасу медикаментів нижче допустимого рівня. Обробка даних здійснюється за допомогою скінченного автомата станів пристрою, який визначає подальшу поведінку системи, ініціює формування подій, активує світлову та звукову індикацію, а також запускає процедури логування та сповіщення серверної частини. 
+     Модуль мережевої взаємодії забезпечує обмін даними між пристроєм на базі ESP32 та серверною частиною системи. Передача інформації реалізована з використанням протоколу HTTP/REST поверх бездротового з’єднання Wi-Fi. Модуль відповідає за встановлення та підтримання мережевого з’єднання, формування JSON-повідомлень, відправлення телеметрії, логів, запитів авторизації та повідомлень про видачу медикаментів. У разі виникнення помилок з’єднання або некоректних відповідей сервера система переходить у відповідний аварійний стан, що фіксується в журналі подій та відображається на індикаторах пристрою.
+     Модуль керування пристроєм відповідає за централізоване управління станами роботи смарт-диспенсера та координацію взаємодії між окремими компонентами системи. Він реалізує логіку переходів між режимами очікування, авторизації, підтвердження операції, видачі медикаментів, аварійного стану та режиму низького запасу. Модуль також забезпечує керування виконавчими елементами пристрою, зокрема сервоприводом, світлодіодними індикаторами, звуковим сигналізатором та LCD-дисплеєм. Усі ключові події роботи пристрою реєструються та передаються на сервер для подальшого моніторингу та аналізу.
+     Створимо UML діаграму прецедентів для IoT-клієнта SafeDose Smart Medicine Dispenser, яка описує основні сценарії взаємодії пристрою ESP32 із системою та сервером (див. рис. 3.2). Діаграма відображає функціональні можливості IoT-клієнта, включаючи зчитування даних з сенсорів (DHT22 для температури та вологості) та кнопок (SCAN, CONFIRM), обробку даних через state machine, керування виконавчими механізмами (servo-мотор для видачі, LCD-дисплей, LED-індикатори, buzzer), а також взаємодію з сервером SafeDose API для передачі телеметрії, логування подій та отримання авторизації на видачу медикаментів.
+
+Рисунок 3.2 - UML діаграма прецедентів
+     
+     Створимо UML діаграму діяльності для IoT-клієнта SafeDose Smart Medicine Dispenser, яка відображає основні дії IoT-клієнта, такі як процес підключення до WiFi мережі, зчитування даних з сенсорів (DHT22) та кнопок (SCAN, CONFIRM, EMERGENCY), технічну валідацію даних з використанням debouncing, обробку через state machine, генерацію критичних подій (Emergency Alert, Low Inventory Warning), передачу телеметрії на сервер через HTTP REST API endpoints (/api/iot/status, /api/iot/log, /api/iot/dispense), запис логів у базу даних DeviceLogs, а також оновлення стану пристрою (LED-індикатори, LCD-дисплей, рівень інвентаря). Діаграма ілюструє безперервний цикл роботи пристрою з можливістю обробки помилок та критичних станів (див. рис. 1.3).
+
+Рисунок 3.3 - UML діаграма діяльності
+     Підключення бібліотек та оголошення PIN конфігурації Підключаємо необхідні бібліотеки для роботи з WiFi, HTTP, LCD дисплеєм, сенсором DHT22, JSON та servo-мотором. Оголошуємо піни для кнопок (SCAN, CONFIRM, EMERGENCY), LED-індикаторів, buzzer, servo та DHT22 сенсора. Відноситься до модулів Input/Sensor Abstraction Layer та Device Management Module.
+  1. #include <Arduino.h>
+  2. #include <WiFi.h>
+  3. #include <HTTPClient.h>
+  4. #include <LiquidCrystal_I2C.h>
+  5. #include <DHT.h>
+  6. #include <ArduinoJson.h>
+  7. #include <ESP32Servo.h>
+  8. 
+  9. /* PIN CONFIG */
+  10. #define BTN_SCAN 13
+  11. #define BTN_CONFIRM 12
+  12. #define BTN_EMERGENCY 15
+  13. 
+  14. #define LED_OK 26
+  15. #define LED_ERR 27
+  16. #define LED_STATUS 33
+  17. #define BUZZER 25
+  18. #define SERVO_PIN 14
+  19. 
+  20. #define DHTPIN 4
+  21. #define DHTTYPE DHT22
+
+	Ініціалізація об'єктів периферії Створюємо об'єкти для роботи з LCD дисплеєм (16x2, I2C адреса 0x27), сенсором температури/вологості DHT22 та servo-мотором. Відноситься до модулів Output Control Module та Sensor Abstraction Layer.
+
+24. LiquidCrystal_I2C lcd(0x27, 16, 2);
+25. DHT dht(DHTPIN, DHTTYPE);
+26. Servo servoMotor;  
+
+	Конфігурація WiFi та Server endpoints Оголошуємо статичні параметри WiFi мережі (SSID та пароль) та базову URL серверного API SafeDose. Формуємо повні URL для всіх REST endpoints: scan, status, log, dispense, inventory. Відноситься до модуля Network Communication Module.
+
+28. /* WIFI */
+29. const char* ssid = "Wokwi-GUEST";
+30. const char* password = "";
+31. 
+32. /* SERVER */
+33. String baseUrl = "https://safedoseapi.whitesky-2b556a71.northeurope.azurecontainerapps.io/api/iot";
+34. String scanUrl = baseUrl + "/scan";
+35. String statusUrl = baseUrl + "/status";
+36. String logUrl = baseUrl + "/log";
+37. String dispenseUrl = baseUrl + "/dispense";
+38. String inventoryUrl = baseUrl + "/inventory";
+	
+	Конфігурація Device Data Оголошуємо ідентифікаційні параметри пристрою: deviceId, workplaceId, ID медикаменту та користувача, а також початковий рівень інвентаря. Відноситься до модуля Device Management Module.
+
+40. /* DEVICE DATA */
+41. String deviceId = "ESP32-01";
+42. long workplaceId = 1;
+43. int currentMedicineId = 1;
+44. int currentUserId = 1;
+45. int inventoryCount = 10;
+	
+	State Machine (машина станів) Оголошуємо enum зі станами пристрою: IDLE (очікування), WAIT_CONFIRM (очікування підтвердження), DISPENSING (видача медикаменту), ERROR_STATE (помилка), MAINTENANCE (обслуговування), LOW_INVENTORY (низький інвентар). Ініціалізуємо початковий стан IDLE. Відноситься до модуля State Processing Module.
+
+47. /* STATE MACHINE */
+48. enum DeviceState {
+49.   IDLE,
+50.   WAIT_CONFIRM,
+51.   DISPENSING,
+52.   ERROR_STATE,
+53.   MAINTENANCE,
+54.   LOW_INVENTORY
+55. };
+56. 
+57. DeviceState state = IDLE;
+58. = 1;
+59. int currentUserId = 1;
+60. int inventoryCount = 10;
+	
+	Таймери та константи debouncing Оголошуємо змінні для відстеження часу: confirmStart (початок очікування підтвердження), lastStatusUpdate (остання відправка статусу), lastInventoryCheck (остання перевірка інвентаря), lastButtonPress (останнє натискання кнопки), lastLEDUpdate (останнє оновлення LED). Визначаємо константи таймаутів та інтервалів. Відноситься до модулів Device Management Module та Input Abstraction Layer.
+
+59. /* TIMERS И DEBOUNCING */
+60. unsigned long confirmStart = 0;
+61. unsigned long lastStatusUpdate = 0;
+62. unsigned long lastInventoryCheck = 0;
+63. unsigned long lastButtonPress = 0;
+64. unsigned long lastLEDUpdate = 0;
+65. 
+66. const unsigned long CONFIRM_TIMEOUT = 30000;
+67. const unsigned long STATUS_INTERVAL = 30000;
+68. const unsigned long INVENTORY_INTERVAL = 60000;
+69. const unsigned long BUTTON_DEBOUNCE = 300; 
+70. const unsigned long LED_BLINK_INTERVAL = 500; 
+	
+	Відстеження стану кнопок Оголошуємо змінні для зберігання останнього стану кнопок (для debouncing) та стану мигання LED. Відноситься до модуля Input Abstraction Layer.
+
+72. /* BUTTON STATE TRACKING */
+73. bool lastScanState = HIGH;
+74. bool lastConfirmState = HIGH;
+75. bool lastEmergencyState = HIGH;
+76. bool ledBlinkState = false;
+	Структура Prescription Data Оголошуємо структуру для зберігання даних рецепта: prescriptionId, patientId, doctorId, medicationId, dosage, patientName, medicationName та прапорець валідності. Створюємо екземпляр структури. Відноситься до модуля Data Collection Module.
+
+78. /* PRESCRIPTION DATA */
+79. struct PrescriptionData {
+80.   long prescriptionId;
+81.   long patientId;
+82.   long doctorId;
+83.   long medicationId;
+84.   int dosage;
+85.   String patientName;
+86.   String medicationName;
+87.   bool isValid;
+88. };
+89. 
+90. PrescriptionData currentPrescription;
+
+	Функції керування Servo-мотором Ініціалізуємо servo-мотор на заданому піні та встановлюємо початковий кут 0°. Функція setServoAngle встановлює кут повороту з затримкою для плавного руху. Відноситься до модуля Output Control Module.
+
+92. /* SERVO FUNCTIONS */
+93. void setupServo() {
+94.   servoMotor.attach(SERVO_PIN);
+95.   servoMotor.write(0); 
+96.   delay(500);
+97. }
+98. void setServoAngle(int angle) {
+99.   servoMotor.write(angle);
+100.   delay(15); 
+101. }
+	
+	Функція читання кнопок з debouncing Реалізуємо програмне усунення брязкоту контактів (debouncing). Перевіряємо зміну стану кнопки та мінімальний інтервал між натисканнями (300мс). Повертаємо true при успішному натисканні (LOW). Відноситься до модуля Input Abstraction Layer.
+104. /* BUTTON FUNCTIONS */
+105. bool readButtonWithDebounce(int pin, bool &lastState) {
+106.   bool currentState = digitalRead(pin);
+107.   if (currentState != lastState && millis() - lastButtonPress > BUTTON_DEBOUNCE) {
+108.     lastState = currentState;
+109.     lastButtonPress = millis();
+110.     return (currentState == LOW); 
+111.   }
+112.   return false;
+113. }
+	
+	Функція оновлення статусного LED Керує статусним LED залежно від поточного стану пристрою: постійне світіння в IDLE, мигання при WAIT_CONFIRM, постійне при DISPENSING, мигання з помилковим LED при ERROR_STATE/LOW_INVENTORY. Використовує інтервал 500мс для мигання. Відноситься до модуля Output Control Module.
+
+115. /* LED FUNCTIONS */
+116. void updateStatusLED() {
+117.   if (millis() - lastLEDUpdate < LED_BLINK_INTERVAL) return;
+118.   
+119.   lastLEDUpdate = millis();
+120.   
+121.   switch (state) {
+122.     case IDLE:
+123.       digitalWrite(LED_STATUS, HIGH);
+124.       break;
+125.       
+126.     case WAIT_CONFIRM:
+127.       ledBlinkState = !ledBlinkState;
+128.       digitalWrite(LED_STATUS, ledBlinkState ? HIGH : LOW);
+129.       break;
+130.       
+131.     case DISPENSING:
+132.       digitalWrite(LED_STATUS, HIGH);
+133.       digitalWrite(LED_OK, HIGH);
+134.       break;
+135.       
+136.     case ERROR_STATE:
+137.     case LOW_INVENTORY:
+138.       ledBlinkState = !ledBlinkState;
+139.       digitalWrite(LED_STATUS, ledBlinkState ? HIGH : LOW);
+140.       if (state == ERROR_STATE) {
+141.         digitalWrite(LED_ERR, ledBlinkState ? HIGH : LOW);
+142.       }
+143.       break;
+144.       
+145.     default:
+146.       digitalWrite(LED_STATUS, LOW);
+147.       break;
+148.   }
+149. }
+
+
+	Оголошення основних функцій Декларуємо прототипи функцій для обробки сканування, видачі медикаментів, помилок, відправки статусу/логів, перевірки інвентаря, обробки аварійної ситуації та відображення інформації. Відноситься до різних модулів системи.
+
+151. /* FUNCTIONS */
+152. void processScan();
+153. void dispense();
+154. void errorSignal();
+155. void sendStatus(String status);
+156. void sendLog(String description);
+157. void checkInventory();
+158. void handleEmergency();
+159. void displayInfo();
+
+	Функція setup() - ініціалізація пристрою Ініціалізуємо Serial порт, налаштовуємо піни кнопок (INPUT_PULLUP) та виходи (LED, buzzer). Ініціалізуємо servo, LCD дисплей та DHT22 сенсор. Підключаємося до WiFi мережі з перевіркою статусу (максимум 20 спроб). При успішному підключенні відправляємо початковий статус "online" та лог на сервер. При невдалі переходимо в ERROR_STATE. Відноситься до модулів Device Management Module, Network Communication Module та Output Control Module.
+
+161. /* SETUP */
+162. void setup() {
+163.   Serial.begin(115200);
+164.   Serial.println("Starting Smart Medicine Dispenser...");
+165. 
+166.   pinMode(BTN_SCAN, INPUT_PULLUP);
+167.   pinMode(BTN_CONFIRM, INPUT_PULLUP);
+168.   pinMode(BTN_EMERGENCY, INPUT_PULLUP);
+169.   pinMode(LED_OK, OUTPUT);
+170.   pinMode(LED_ERR, OUTPUT);
+171.   pinMode(LED_STATUS, OUTPUT);
+172.   pinMode(BUZZER, OUTPUT);
+173. 
+174.   digitalWrite(LED_OK, LOW);
+175.   digitalWrite(LED_ERR, LOW);
+176.   digitalWrite(LED_STATUS, LOW);
+177. 
+178.   setupServo();
+179.   
+180.   lcd.init();
+181.   lcd.backlight();
+182.   lcd.print("Initializing...");
+183.   delay(1000);
+184.   
+185.   dht.begin();
+186. 
+187.   lcd.clear();
+188.   lcd.print("WiFi Connecting");
+189.   WiFi.begin(ssid, password);
+190. 
+191.   int wifiAttempts = 0;
+192.   while (WiFi.status() != WL_CONNECTED && wifiAttempts < 20) {
+193.     delay(500);
+194.     Serial.print(".");
+195.     lcd.print(".");
+196.     wifiAttempts++;
+197.   }
+198. 
+199.   if (WiFi.status() == WL_CONNECTED) {
+200.     Serial.println("\nWiFi Connected!");
+201.     Serial.print("IP: ");
+202.     Serial.println(WiFi.localIP());
+203.     
+204.     lcd.clear();
+205.     lcd.print("Device Ready");
+206.     digitalWrite(LED_STATUS, HIGH);
+207.     
+208.     sendLog("Device started successfully");
+209.     sendStatus("online");
+210.   } else {
+211.     Serial.println("\nWiFi Failed!");
+212.     lcd.clear();
+213.     lcd.print("WiFi Failed");
+214.     state = ERROR_STATE;
+215.   }
+216.   
+217.   currentPrescription.isValid = false;
+218.   
+219.   Serial.println("Setup completed");
+220. }
+
+	Функція loop() - головний цикл Реалізує безперервний цикл роботи пристрою. Оновлює статусний LED, перевіряє аварійну кнопку. Відправляє статус кожні 30 секунд та перевіряє інвентар кожні 60 секунд. Використовує state machine для обробки станів: IDLE (очікування сканування), WAIT_CONFIRM (очікування підтвердження з таймаутом 30с), LOW_INVENTORY (попередження про низький інвентар), ERROR_STATE (обробка помилок). Відноситься до модуля State Processing Module.
+
+222. /* MAIN LOOP */
+223. void loop() {
+224.   updateStatusLED();
+225.   
+226.   if (readButtonWithDebounce(BTN_EMERGENCY, lastEmergencyState)) {
+227.     handleEmergency();
+228.   }
+229. 
+230.   if (millis() - lastStatusUpdate > STATUS_INTERVAL) {
+231.     if (state != ERROR_STATE) {
+232.       sendStatus("operational");
+233.     }
+234.     lastStatusUpdate = millis();
+235.   }
+236. 
+237.   if (millis() - lastInventoryCheck > INVENTORY_INTERVAL) {
+238.     checkInventory();
+239.     lastInventoryCheck = millis();
+240.   }
+241. 
+242.   switch (state) {
+243.     case IDLE:
+244.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+245.         processScan();
+246.       }
+247.       break;
+248. 
+249.     case WAIT_CONFIRM:
+250.       displayInfo();
+251.       if (readButtonWithDebounce(BTN_CONFIRM, lastConfirmState)) {
+252.         dispense();
+253.       }
+254.       
+255.       if (millis() - confirmStart > CONFIRM_TIMEOUT) {
+256.         lcd.clear();
+257.         lcd.print("Session Timeout");
+258.         Serial.println("Session timeout occurred");
+259.         errorSignal();
+260.         sendLog("Confirmation timeout occurred");
+261.         currentPrescription.isValid = false;
+262.         state = IDLE;
+263.         delay(2000);
+264.         lcd.clear();
+265.         lcd.print("Device Ready");
+266.       }
+267.       break;
+268. 
+269.     case LOW_INVENTORY:
+270.       lcd.setCursor(0, 0);
+271.       lcd.print("LOW INVENTORY");
+272.       lcd.setCursor(0, 1);
+273.       lcd.print("Count: " + String(inventoryCount));
+274.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+275.         state = IDLE;
+276.         lcd.clear();
+277.         lcd.print("Device Ready");
+278.       }
+279.       break;
+280. 
+281.     case ERROR_STATE:
+282.       lcd.setCursor(0, 0);
+283.       lcd.print("ERROR STATE");
+284.       lcd.setCursor(0, 1);
+285.       lcd.print("Press SCAN");
+286.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+287.         state = IDLE;
+288.         digitalWrite(LED_ERR, LOW);
+289.         lcd.clear();
+290.         lcd.print("Device Ready");
+291.         sendLog("Device recovered from error state");
+292.       }
+293.       break;
+294.   }
+295.   
+296.   delay(10);
+297. }
+
+	Функція processScan() - обробка сканування Відправляє HTTP POST запит на /api/iot/scan з deviceId, medicineId, userId, workplaceId. Парсить JSON відповідь сервера. При успішній авторизації (allowed: true) зберігає дані рецепта в структуру PrescriptionData та переходить в стан WAIT_CONFIRM. При відмові відображає причину та залишається в IDLE. При помилці мережі переходить в ERROR_STATE. Відноситься до модулів Network Communication Module, Data Collection Module та State Processing Module.
+
+299. /* SCAN PROCESS */
+300. void processScan() {
+301.   lcd.clear();
+302.   lcd.print("Scanning...");
+303.   Serial.println("Scan initiated");
+304.   sendLog("Scan initiated");
+305. 
+306.   HTTPClient http;
+307.   http.begin(scanUrl);
+308.   http.addHeader("Content-Type", "application/json");
+309.   http.setTimeout(10000); 
+310. 
+311.   DynamicJsonDocument doc(1024);
+312.   doc["deviceId"] = deviceId;
+313.   doc["medicineId"] = currentMedicineId;
+314.   doc["userId"] = currentUserId;
+315.   doc["workplaceId"] = workplaceId;
+316. 
+317.   String payload;
+318.   serializeJson(doc, payload);
+319.   
+320.   Serial.println("Sending request: " + payload);
+321. 
+322.   int code = http.POST(payload);
+323.   String response = http.getString();
+324.   http.end();
+325. 
+326.   Serial.println("Response code: " + String(code));
+327.   Serial.println("Response: " + response);
+328. 
+329.   if (code == 200) {
+330.     DynamicJsonDocument responseDoc(2048);
+331.     DeserializationError error = deserializeJson(responseDoc, response);
+332.     
+333.     if (error) {
+334.       Serial.println("JSON parsing error");
+335.       lcd.clear();
+336.       lcd.print("Data Error");
+337.       errorSignal();
+338.       state = ERROR_STATE;
+339.       return;
+340.     }
+341.     
+342.     if (responseDoc["allowed"] == true) {
+343.       currentPrescription.prescriptionId = responseDoc["prescriptionId"] | 0;
+344.       currentPrescription.patientId = responseDoc["patientId"] | 0;
+345.       currentPrescription.doctorId = responseDoc["doctorId"] | 0;
+346.       currentPrescription.medicationId = responseDoc["medicationId"] | 0;
+347.       currentPrescription.dosage = responseDoc["dosage"] | 1;
+348.       currentPrescription.patientName = responseDoc["patientName"] | "Unknown Patient";
+349.       currentPrescription.medicationName = responseDoc["medicationName"] | "Unknown Medicine";
+350.       currentPrescription.isValid = true;
+351. 
+352.       lcd.clear();
+353.       lcd.print("Authorized");
+354.       Serial.println("Authorization successful for: " + currentPrescription.patientName);
+355.       
+356.       state = WAIT_CONFIRM;
+357.       confirmStart = millis();
+358.       
+359.       sendLog("Authorization successful for patient: " + currentPrescription.patientName);
+360.     } else {
+361.       lcd.clear();
+362.       lcd.print("Access Denied");
+363.       String reason = responseDoc["reason"] | "Unknown reason";
+364.       Serial.println("Access denied: " + reason);
+365.       errorSignal();
+366.       sendStatus("denied");
+367.       sendLog("Authorization denied - " + reason);
+368.       state = IDLE;
+369.       delay(3000);
+370.       lcd.clear();
+371.       lcd.print("Device Ready");
+372.     }
+373.   } else {
+374.     lcd.clear();
+375.     lcd.print("Network Error");
+376.     Serial.println("Network error - Code: " + String(code));
+377.     errorSignal();
+378.     sendLog("Network error during scan - Code: " + String(code));
+379.     state = ERROR_STATE;
+380.   }
+381. }
+
+	Функція dispense() - видача медикаменту Перевіряє валідність рецепта, переходить в стан DISPENSING. Керує servo-мотором (поворот 0°→90°→0° з плавним рухом), зменшує inventoryCount. Зчитує температуру з DHT22. Відправляє HTTP POST на /api/iot/dispense з повними даними події (prescriptionId, patientId, doctorId, medicationId, quantityDispensed, temperature, inventoryCount). Відображає назву медикаменту на LCD та повертається в IDLE. Відноситься до модулів Output Control Module, Network Communication Module та State Processing Module.
+
+383. /* DISPENSE PROCESS */
+384. void dispense() {
+385.   if (!currentPrescription.isValid) {
+386.     Serial.println("Invalid prescription data");
+387.     errorSignal();
+388.     return;
+389.   }
+390. 
+391.   state = DISPENSING;
+392.   lcd.clear();
+393.   lcd.print("Dispensing...");
+394.   Serial.println("Dispensing started for prescription ID: " + String(currentPrescription.prescriptionId));
+395.   sendLog("Dispensing started for prescription ID: " + String(currentPrescription.prescriptionId));
+396. 
+397.   digitalWrite(LED_OK, HIGH);
+398.   digitalWrite(LED_STATUS, HIGH);
+399. 
+400.   Serial.println("Moving servo...");
+401.   for (int i = 0; i <= 90; i += 5) {
+402.     setServoAngle(i);
+403.     delay(30);
+404.   }
+405.   delay(1000);
+406.   for (int i = 90; i >= 0; i -= 5) {
+407.     setServoAngle(i);
+408.     delay(30);
+409.   }
+410. 
+411.   digitalWrite(LED_OK, LOW);
+412.   inventoryCount--;
+413. 
+414.   HTTPClient http;
+415.   http.begin(dispenseUrl);
+416.   http.addHeader("Content-Type", "application/json");
+417.   http.setTimeout(10000);
+418. 
+419.   float temp = dht.readTemperature();
+420.   if (isnan(temp)) temp = 25.0; 
+421. 
+422.   DynamicJsonDocument doc(1024);
+423.   doc["deviceId"] = deviceId;
+424.   doc["prescriptionId"] = currentPrescription.prescriptionId;
+425.   doc["patientId"] = currentPrescription.patientId;
+426.   doc["doctorId"] = currentPrescription.doctorId;
+427.   doc["medicationId"] = currentPrescription.medicationId;
+428.   doc["quantityDispensed"] = currentPrescription.dosage;
+429.   doc["temperature"] = temp;
+430.   doc["inventoryCount"] = inventoryCount;
+431. 
+432.   String payload;
+433.   serializeJson(doc, payload);
+434. 
+435.   int responseCode = http.POST(payload);
+436.   http.end();
+437.   
+438.   Serial.println("Dispense event sent, code: " + String(responseCode));
+439. 
+440.   lcd.clear();
+441.   lcd.print("Dispensed!");
+442.   lcd.setCursor(0, 1);
+443.   String medName = currentPrescription.medicationName;
+444.   if (medName.length() > 16) {
+445.     medName = medName.substring(0, 16);
+446.   }
+447.   lcd.print(medName);
+448.   
+449.   Serial.println("Medication dispensed successfully");
+450.   sendLog("Medication dispensed successfully");
+451.   sendStatus("dispensed");
+452.   
+453.   delay(3000);
+454.   currentPrescription.isValid = false;
+455.   state = IDLE;
+456.   
+457.   lcd.clear();
+458.   lcd.print("Device Ready");
+459. }
+
+	Функція handleEmergency() - обробка аварійної ситуації Обробляє натискання кнопки EMERGENCY. Відправляє статус "emergency" та лог на сервер. Відображає попередження на LCD, вмикає LED_ERR та генерує 5 звукових сигналів частотою 2000Hz через buzzer. Відноситься до модулів Network Communication Module та Output Control Module.
+
+461. /* EMERGENCY HANDLER */
+462. void handleEmergency() {
+463.   Serial.println("EMERGENCY BUTTON PRESSED!");
+464.   sendLog("Emergency button pressed");
+465.   sendStatus("emergency");
+466.   
+467.   lcd.clear();
+468.   lcd.print("EMERGENCY!");
+469.   lcd.setCursor(0, 1);
+470.   lcd.print("Help Called");
+471.   
+472.   digitalWrite(LED_ERR, HIGH);
+473.   for (int i = 0; i < 5; i++) {
+474.     tone(BUZZER, 2000);
+475.     delay(200);
+476.     noTone(BUZZER);
+477.     delay(200);
+478.   }
+479.   digitalWrite(LED_ERR, LOW);
+480.   
+481.   delay(2000);
+482.   if (state == IDLE) {
+483.     lcd.clear();
+484.     lcd.print("Device Ready");
+485.   }
+486. }
+
+	Функція displayInfo() - відображення інформації Оновлює LCD дисплей у стані WAIT_CONFIRM кожну секунду. Відображає ім'я пацієнта (обрізається до 16 символів) та запрошення натиснути CONFIRM. При залишку часу менше 10 секунд показує зворотній відлік. Відноситься до модуля Output Control Module.
+
+488. /* DISPLAY INFO */
+489. void displayInfo() {
+490.   static unsigned long lastDisplayUpdate = 0;
+491.   if (millis() - lastDisplayUpdate < 1000) return; 
+492.   
+493.   lastDisplayUpdate = millis();
+494.   
+495.   if (currentPrescription.isValid) {
+496.     lcd.setCursor(0, 0);
+497.     String patientName = currentPrescription.patientName;
+498.     if (patientName.length() > 16) {
+499.       patientName = patientName.substring(0, 16);
+500.     }
+501.     lcd.print(patientName);
+502.     
+503.     lcd.setCursor(0, 1);
+504.     lcd.print("Press CONFIRM   "); 
+505.     
+506.     unsigned long remaining = (CONFIRM_TIMEOUT - (millis() - confirmStart)) / 1000;
+507.     if (remaining < 10) {
+508.       lcd.setCursor(14, 1);
+509.       lcd.print(String(remaining));
+510.     }
+511.   }
+512. }
+
+	Функція checkInventory() - перевірка інвентаря Перевіряє рівень інвентаря кожні 60 секунд. При кількості ≤5 переходить в стан LOW_INVENTORY та відправляє попередження на сервер. Відправляє HTTP POST на /api/iot/inventory з поточною кількістю медикаментів. Відноситься до модулів Device Management Module та Network Communication Module.
+
+514. /* INVENTORY CHECK */
+515. void checkInventory() {
+516.   if (inventoryCount <= 5 && state != LOW_INVENTORY) {
+517.     state = LOW_INVENTORY;
+518.     Serial.println("Low inventory warning - Count: " + String(inventoryCount));
+519.     sendLog("Low inventory warning - Count: " + String(inventoryCount));
+520.     sendStatus("low_inventory");
+521.   }
+522.   
+523.   HTTPClient http;
+524.   http.begin(inventoryUrl);
+525.   http.addHeader("Content-Type", "application/json");
+526.   http.setTimeout(5000);
+527. 
+528.   DynamicJsonDocument doc(512);
+529.   doc["deviceId"] = deviceId;
+530.   doc["medicationId"] = currentMedicineId;
+531.   doc["currentCount"] = inventoryCount;
+532. 
+533.   String payload;
+534.   serializeJson(doc, payload);
+535. 
+536.   http.POST(payload);
+537.   http.end();
+538. }
+
+	Функція errorSignal() - сигналізація помилки Генерує звуковий та візуальний сигнал помилки. Вмикає LED_ERR та генерує 3 звукових сигнали частотою 1000Hz через buzzer. Відноситься до модуля Output Control Module.
+
+540. /* ERROR SIGNAL */
+541. void errorSignal() {
+542.   Serial.println("Error signal triggered");
+543.   digitalWrite(LED_ERR, HIGH);
+544.   for (int i = 0; i < 3; i++) {
+545.     tone(BUZZER, 1000);
+546.     delay(300);
+547.     noTone(BUZZER);
+548.     delay(300);
+549.   }
+550.   digitalWrite(LED_ERR, LOW);
+551. }
+
+	Функція sendStatus() - відправка статусу Відправляє HTTP POST на /api/iot/status з поточним статусом пристрою, телеметрією (температура, вологість з DHT22), рівнем інвентаря, workplaceId та uptime (час роботи в мілісекундах). При помилці зчитування сенсора використовує значення за замовчуванням (25°C, 50%). Відноситься до модулів Network Communication Module та Data Collection Module.
+
+553. /* STATUS UPDATE */
+554. void sendStatus(String status) {
+555.   float temp = dht.readTemperature();
+556.   float humidity = dht.readHumidity();
+557.   if (isnan(temp)) temp = 25.0;
+558.   if (isnan(humidity)) humidity = 50.0;
+559. 
+560.   HTTPClient http;
+561.   http.begin(statusUrl);
+562.   http.addHeader("Content-Type", "application/json");
+563.   http.setTimeout(5000);
+564. 
+565.   DynamicJsonDocument doc(1024);
+566.   doc["deviceId"] = deviceId;
+567.   doc["status"] = status;
+568.   doc["temperature"] = temp;
+569.   doc["humidity"] = humidity;
+570.   doc["inventoryCount"] = inventoryCount;
+571.   doc["workplaceId"] = workplaceId;
+572.   doc["uptime"] = millis();
+573. 
+574.   String payload;
+575.   serializeJson(doc, payload);
+576. 
+577.   int code = http.POST(payload);
+578.   http.end();
+579.   
+580.   Serial.println("Status sent: " + status + " (Code: " + String(code) + ")");
+581. }
+
+
+	Функція sendLog() відповідає за логування подій, формує HTTP POST запит на /api/iot/log, надсилає опис події разом з deviceId на сервер, використовується для фіксації дій користувача, попереджень та помилок і виводить текст логу в Serial для локальної діагностики, обидві функції належать до Network Communication Module, а sendStatus() додатково — до Data Collection Module.
+
+583. /* LOGGING */
+584. void sendLog(String description) {
+585.   HTTPClient http;
+586.   http.begin(logUrl);
+587.   http.addHeader("Content-Type", "application/json");
+588.   http.setTimeout(5000);
+589. 
+590.   DynamicJsonDocument doc(512);
+591.   doc["deviceId"] = deviceId;
+592.   doc["description"] = description;
+593. 
+594.   String payload;
+595.   serializeJson(doc, payload);
+596. 
+597.   http.POST(payload);
+598.   http.end();
+599. 
+600.   Serial.println("LOG: " + description);
+601. }
+
+
+
+
+
+
+
+
+
+
+4 ВИСНОВКИ
+     У ході виконання лабораторної роботи №4 було розроблено програмне забезпечення для IoT (SmartDevice) пристрою на основі платформи вбудованих систем. Реалізовано розширену функціональність, що відповідає концепції IoT, та забезпечено взаємодію пристрою з іншими компонентами програмної системи з використанням сучасних протоколів обміну даними. У процесі роботи було закріплено теоретичні знання та здобуто практичні навички з розробки програмного забезпечення для вбудованих систем, а також з проєктування IoT-рішень і організації їхньої взаємодії в межах єдиної програмної системи. 
+5 ВИКОРИСТАНІ ДЖЕРЕЛА
+1. Методичні вказівки до лабораторних робіт з дисципліни «Аналіз та рефакторинг коду програмного забезпечення» (дата звернення: 23.10.2025).
+2. Wokwi - World's most advanced ESP32 Simulator. Wokwi - World's most advanced ESP32 Simulator. URL: https://wokwi.com/ (дата звернення: 23.12.2025).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК А
+Відеозапис
+Відеозапис презентації результатів лабораторної роботи: https://youtu.be/LCwWbuk_YxY
+Хронологічний опис відеозапису:
+00:00 – Вступ 
+00:30 – Опис діаграм 
+00:59 – Розгляд коду 
+07:35 – Перевірка роботи застосунку 
+10:20 – Аналіз бази даних	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ДОДАТОК В
+Програмний код
+GitHub репозиторій: https://github.com/NureTsyselskyiAndrii/ark-pzpi-23-4-tsyselskyi-andrii/blob/main/Lab4/ark-pzpi-23-4-tsyselskyi-andrii-lab4
+В.1 Код для IoT пристрою.
+1. #include <Arduino.h>
+2. #include <WiFi.h>
+3. #include <HTTPClient.h>
+4. #include <LiquidCrystal_I2C.h>
+5. #include <DHT.h>
+6. #include <ArduinoJson.h>
+7. #include <ESP32Servo.h>
+8. 
+9. /* PIN CONFIG */
+10. #define BTN_SCAN 13
+11. #define BTN_CONFIRM 12
+12. #define BTN_EMERGENCY 15
+13. 
+14. #define LED_OK 26
+15. #define LED_ERR 27
+16. #define LED_STATUS 33
+17. #define BUZZER 25
+18. #define SERVO_PIN 14
+19. 
+20. #define DHTPIN 4
+21. #define DHTTYPE DHT22
+22. 
+23. /* OBJECTS */
+24. LiquidCrystal_I2C lcd(0x27, 16, 2);
+25. DHT dht(DHTPIN, DHTTYPE);
+26. Servo servoMotor;  
+27. 
+28. /* WIFI */
+29. const char* ssid = "Wokwi-GUEST";
+30. const char* password = "";
+31. 
+32. /* SERVER */
+33. String baseUrl = "https://safedoseapi.whitesky-2b556a71.northeurope.azurecontainerapps.io/api/iot";
+34. String scanUrl = baseUrl + "/scan";
+35. String statusUrl = baseUrl + "/status";
+36. String logUrl = baseUrl + "/log";
+37. String dispenseUrl = baseUrl + "/dispense";
+38. String inventoryUrl = baseUrl + "/inventory";
+39. 
+40. /* DEVICE DATA */
+41. String deviceId = "ESP32-01";
+42. long workplaceId = 1;
+43. int currentMedicineId = 1;
+44. int currentUserId = 1;
+45. int inventoryCount = 10;
+46. 
+47. /* STATE MACHINE */
+48. enum DeviceState {
+49.   IDLE,
+50.   WAIT_CONFIRM,
+51.   DISPENSING,
+52.   ERROR_STATE,
+53.   MAINTENANCE,
+54.   LOW_INVENTORY
+55. };
+56. 
+57. DeviceState state = IDLE;
+58. 
+59. /* TIMERS И DEBOUNCING */
+60. unsigned long confirmStart = 0;
+61. unsigned long lastStatusUpdate = 0;
+62. unsigned long lastInventoryCheck = 0;
+63. unsigned long lastButtonPress = 0;
+64. unsigned long lastLEDUpdate = 0;
+65. 
+66. const unsigned long CONFIRM_TIMEOUT = 30000;
+67. const unsigned long STATUS_INTERVAL = 30000;
+68. const unsigned long INVENTORY_INTERVAL = 60000;
+69. const unsigned long BUTTON_DEBOUNCE = 300; 
+70. const unsigned long LED_BLINK_INTERVAL = 500; 
+71. 
+72. /* BUTTON STATE TRACKING */
+73. bool lastScanState = HIGH;
+74. bool lastConfirmState = HIGH;
+75. bool lastEmergencyState = HIGH;
+76. bool ledBlinkState = false;
+77. 
+78. /* PRESCRIPTION DATA */
+79. struct PrescriptionData {
+80.   long prescriptionId;
+81.   long patientId;
+82.   long doctorId;
+83.   long medicationId;
+84.   int dosage;
+85.   String patientName;
+86.   String medicationName;
+87.   bool isValid;
+88. };
+89. 
+90. PrescriptionData currentPrescription;
+91. 
+92. /* SERVO FUNCTIONS */
+93. void setupServo() {
+94.   servoMotor.attach(SERVO_PIN);
+95.   servoMotor.write(0); 
+96.   delay(500);
+97. }
+98. 
+99. void setServoAngle(int angle) {
+100.   servoMotor.write(angle);
+101.   delay(15); 
+102. }
+103. 
+104. /* BUTTON FUNCTIONS */
+105. bool readButtonWithDebounce(int pin, bool &lastState) {
+106.   bool currentState = digitalRead(pin);
+107.   if (currentState != lastState && millis() - lastButtonPress > BUTTON_DEBOUNCE) {
+108.     lastState = currentState;
+109.     lastButtonPress = millis();
+110.     return (currentState == LOW); 
+111.   }
+112.   return false;
+113. }
+114. 
+115. /* LED FUNCTIONS */
+116. void updateStatusLED() {
+117.   if (millis() - lastLEDUpdate < LED_BLINK_INTERVAL) return;
+118.   
+119.   lastLEDUpdate = millis();
+120.   
+121.   switch (state) {
+122.     case IDLE:
+123.       digitalWrite(LED_STATUS, HIGH);
+124.       break;
+125.       
+126.     case WAIT_CONFIRM:
+127.       ledBlinkState = !ledBlinkState;
+128.       digitalWrite(LED_STATUS, ledBlinkState ? HIGH : LOW);
+129.       break;
+130.       
+131.     case DISPENSING:
+132.       digitalWrite(LED_STATUS, HIGH);
+133.       digitalWrite(LED_OK, HIGH);
+134.       break;
+135.       
+136.     case ERROR_STATE:
+137.     case LOW_INVENTORY:
+138.       ledBlinkState = !ledBlinkState;
+139.       digitalWrite(LED_STATUS, ledBlinkState ? HIGH : LOW);
+140.       if (state == ERROR_STATE) {
+141.         digitalWrite(LED_ERR, ledBlinkState ? HIGH : LOW);
+142.       }
+143.       break;
+144.       
+145.     default:
+146.       digitalWrite(LED_STATUS, LOW);
+147.       break;
+148.   }
+149. }
+150. 
+151. /* FUNCTIONS */
+152. void processScan();
+153. void dispense();
+154. void errorSignal();
+155. void sendStatus(String status);
+156. void sendLog(String description);
+157. void checkInventory();
+158. void handleEmergency();
+159. void displayInfo();
+160. 
+161. /* SETUP */
+162. void setup() {
+163.   Serial.begin(115200);
+164.   Serial.println("Starting Smart Medicine Dispenser...");
+165. 
+166.   pinMode(BTN_SCAN, INPUT_PULLUP);
+167.   pinMode(BTN_CONFIRM, INPUT_PULLUP);
+168.   pinMode(BTN_EMERGENCY, INPUT_PULLUP);
+169.   pinMode(LED_OK, OUTPUT);
+170.   pinMode(LED_ERR, OUTPUT);
+171.   pinMode(LED_STATUS, OUTPUT);
+172.   pinMode(BUZZER, OUTPUT);
+173. 
+174.   digitalWrite(LED_OK, LOW);
+175.   digitalWrite(LED_ERR, LOW);
+176.   digitalWrite(LED_STATUS, LOW);
+177. 
+178.   setupServo();
+179.   
+180.   lcd.init();
+181.   lcd.backlight();
+182.   lcd.print("Initializing...");
+183.   delay(1000);
+184.   
+185.   dht.begin();
+186. 
+187.   lcd.clear();
+188.   lcd.print("WiFi Connecting");
+189.   WiFi.begin(ssid, password);
+190. 
+191.   int wifiAttempts = 0;
+192.   while (WiFi.status() != WL_CONNECTED && wifiAttempts < 20) {
+193.     delay(500);
+194.     Serial.print(".");
+195.     lcd.print(".");
+196.     wifiAttempts++;
+197.   }
+198. 
+199.   if (WiFi.status() == WL_CONNECTED) {
+200.     Serial.println("\nWiFi Connected!");
+201.     Serial.print("IP: ");
+202.     Serial.println(WiFi.localIP());
+203.     
+204.     lcd.clear();
+205.     lcd.print("Device Ready");
+206.     digitalWrite(LED_STATUS, HIGH);
+207.     
+208.     sendLog("Device started successfully");
+209.     sendStatus("online");
+210.   } else {
+211.     Serial.println("\nWiFi Failed!");
+212.     lcd.clear();
+213.     lcd.print("WiFi Failed");
+214.     state = ERROR_STATE;
+215.   }
+216.   
+217.   currentPrescription.isValid = false;
+218.   
+219.   Serial.println("Setup completed");
+220. }
+221. 
+222. /* MAIN LOOP */
+223. void loop() {
+224.   updateStatusLED();
+225.   
+226.   if (readButtonWithDebounce(BTN_EMERGENCY, lastEmergencyState)) {
+227.     handleEmergency();
+228.   }
+229. 
+230.   if (millis() - lastStatusUpdate > STATUS_INTERVAL) {
+231.     if (state != ERROR_STATE) {
+232.       sendStatus("operational");
+233.     }
+234.     lastStatusUpdate = millis();
+235.   }
+236. 
+237.   if (millis() - lastInventoryCheck > INVENTORY_INTERVAL) {
+238.     checkInventory();
+239.     lastInventoryCheck = millis();
+240.   }
+241. 
+242.   switch (state) {
+243.     case IDLE:
+244.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+245.         processScan();
+246.       }
+247.       break;
+248. 
+249.     case WAIT_CONFIRM:
+250.       displayInfo();
+251.       if (readButtonWithDebounce(BTN_CONFIRM, lastConfirmState)) {
+252.         dispense();
+253.       }
+254.       
+255.       if (millis() - confirmStart > CONFIRM_TIMEOUT) {
+256.         lcd.clear();
+257.         lcd.print("Session Timeout");
+258.         Serial.println("Session timeout occurred");
+259.         errorSignal();
+260.         sendLog("Confirmation timeout occurred");
+261.         currentPrescription.isValid = false;
+262.         state = IDLE;
+263.         delay(2000);
+264.         lcd.clear();
+265.         lcd.print("Device Ready");
+266.       }
+267.       break;
+268. 
+269.     case LOW_INVENTORY:
+270.       lcd.setCursor(0, 0);
+271.       lcd.print("LOW INVENTORY");
+272.       lcd.setCursor(0, 1);
+273.       lcd.print("Count: " + String(inventoryCount));
+274.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+275.         state = IDLE;
+276.         lcd.clear();
+277.         lcd.print("Device Ready");
+278.       }
+279.       break;
+280. 
+281.     case ERROR_STATE:
+282.       lcd.setCursor(0, 0);
+283.       lcd.print("ERROR STATE");
+284.       lcd.setCursor(0, 1);
+285.       lcd.print("Press SCAN");
+286.       if (readButtonWithDebounce(BTN_SCAN, lastScanState)) {
+287.         state = IDLE;
+288.         digitalWrite(LED_ERR, LOW);
+289.         lcd.clear();
+290.         lcd.print("Device Ready");
+291.         sendLog("Device recovered from error state");
+292.       }
+293.       break;
+294.   }
+295.   
+296.   delay(10);
+297. }
+298. 
+299. /* SCAN PROCESS */
+300. void processScan() {
+301.   lcd.clear();
+302.   lcd.print("Scanning...");
+303.   Serial.println("Scan initiated");
+304.   sendLog("Scan initiated");
+305. 
+306.   HTTPClient http;
+307.   http.begin(scanUrl);
+308.   http.addHeader("Content-Type", "application/json");
+309.   http.setTimeout(10000); 
+310. 
+311.   DynamicJsonDocument doc(1024);
+312.   doc["deviceId"] = deviceId;
+313.   doc["medicineId"] = currentMedicineId;
+314.   doc["userId"] = currentUserId;
+315.   doc["workplaceId"] = workplaceId;
+316. 
+317.   String payload;
+318.   serializeJson(doc, payload);
+319.   
+320.   Serial.println("Sending request: " + payload);
+321. 
+322.   int code = http.POST(payload);
+323.   String response = http.getString();
+324.   http.end();
+325. 
+326.   Serial.println("Response code: " + String(code));
+327.   Serial.println("Response: " + response);
+328. 
+329.   if (code == 200) {
+330.     DynamicJsonDocument responseDoc(2048);
+331.     DeserializationError error = deserializeJson(responseDoc, response);
+332.     
+333.     if (error) {
+334.       Serial.println("JSON parsing error");
+335.       lcd.clear();
+336.       lcd.print("Data Error");
+337.       errorSignal();
+338.       state = ERROR_STATE;
+339.       return;
+340.     }
+341.     
+342.     if (responseDoc["allowed"] == true) {
+343.       currentPrescription.prescriptionId = responseDoc["prescriptionId"] | 0;
+344.       currentPrescription.patientId = responseDoc["patientId"] | 0;
+345.       currentPrescription.doctorId = responseDoc["doctorId"] | 0;
+346.       currentPrescription.medicationId = responseDoc["medicationId"] | 0;
+347.       currentPrescription.dosage = responseDoc["dosage"] | 1;
+348.       currentPrescription.patientName = responseDoc["patientName"] | "Unknown Patient";
+349.       currentPrescription.medicationName = responseDoc["medicationName"] | "Unknown Medicine";
+350.       currentPrescription.isValid = true;
+351. 
+352.       lcd.clear();
+353.       lcd.print("Authorized");
+354.       Serial.println("Authorization successful for: " + currentPrescription.patientName);
+355.       
+356.       state = WAIT_CONFIRM;
+357.       confirmStart = millis();
+358.       
+359.       sendLog("Authorization successful for patient: " + currentPrescription.patientName);
+360.     } else {
+361.       lcd.clear();
+362.       lcd.print("Access Denied");
+363.       String reason = responseDoc["reason"] | "Unknown reason";
+364.       Serial.println("Access denied: " + reason);
+365.       errorSignal();
+366.       sendStatus("denied");
+367.       sendLog("Authorization denied - " + reason);
+368.       state = IDLE;
+369.       delay(3000);
+370.       lcd.clear();
+371.       lcd.print("Device Ready");
+372.     }
+373.   } else {
+374.     lcd.clear();
+375.     lcd.print("Network Error");
+376.     Serial.println("Network error - Code: " + String(code));
+377.     errorSignal();
+378.     sendLog("Network error during scan - Code: " + String(code));
+379.     state = ERROR_STATE;
+380.   }
+381. }
+382. 
+383. /* DISPENSE PROCESS */
+384. void dispense() {
+385.   if (!currentPrescription.isValid) {
+386.     Serial.println("Invalid prescription data");
+387.     errorSignal();
+388.     return;
+389.   }
+390. 
+391.   state = DISPENSING;
+392.   lcd.clear();
+393.   lcd.print("Dispensing...");
+394.   Serial.println("Dispensing started for prescription ID: " + String(currentPrescription.prescriptionId));
+395.   sendLog("Dispensing started for prescription ID: " + String(currentPrescription.prescriptionId));
+396. 
+397.   digitalWrite(LED_OK, HIGH);
+398.   digitalWrite(LED_STATUS, HIGH);
+399. 
+400.   Serial.println("Moving servo...");
+401.   for (int i = 0; i <= 90; i += 5) {
+402.     setServoAngle(i);
+403.     delay(30);
+404.   }
+405.   delay(1000);
+406.   for (int i = 90; i >= 0; i -= 5) {
+407.     setServoAngle(i);
+408.     delay(30);
+409.   }
+410. 
+411.   digitalWrite(LED_OK, LOW);
+412.   inventoryCount--;
+413. 
+414.   HTTPClient http;
+415.   http.begin(dispenseUrl);
+416.   http.addHeader("Content-Type", "application/json");
+417.   http.setTimeout(10000);
+418. 
+419.   float temp = dht.readTemperature();
+420.   if (isnan(temp)) temp = 25.0; 
+421. 
+422.   DynamicJsonDocument doc(1024);
+423.   doc["deviceId"] = deviceId;
+424.   doc["prescriptionId"] = currentPrescription.prescriptionId;
+425.   doc["patientId"] = currentPrescription.patientId;
+426.   doc["doctorId"] = currentPrescription.doctorId;
+427.   doc["medicationId"] = currentPrescription.medicationId;
+428.   doc["quantityDispensed"] = currentPrescription.dosage;
+429.   doc["temperature"] = temp;
+430.   doc["inventoryCount"] = inventoryCount;
+431. 
+432.   String payload;
+433.   serializeJson(doc, payload);
+434. 
+435.   int responseCode = http.POST(payload);
+436.   http.end();
+437.   
+438.   Serial.println("Dispense event sent, code: " + String(responseCode));
+439. 
+440.   lcd.clear();
+441.   lcd.print("Dispensed!");
+442.   lcd.setCursor(0, 1);
+443.   String medName = currentPrescription.medicationName;
+444.   if (medName.length() > 16) {
+445.     medName = medName.substring(0, 16);
+446.   }
+447.   lcd.print(medName);
+448.   
+449.   Serial.println("Medication dispensed successfully");
+450.   sendLog("Medication dispensed successfully");
+451.   sendStatus("dispensed");
+452.   
+453.   delay(3000);
+454.   currentPrescription.isValid = false;
+455.   state = IDLE;
+456.   
+457.   lcd.clear();
+458.   lcd.print("Device Ready");
+459. }
+460. 
+461. /* EMERGENCY HANDLER */
+462. void handleEmergency() {
+463.   Serial.println("EMERGENCY BUTTON PRESSED!");
+464.   sendLog("Emergency button pressed");
+465.   sendStatus("emergency");
+466.   
+467.   lcd.clear();
+468.   lcd.print("EMERGENCY!");
+469.   lcd.setCursor(0, 1);
+470.   lcd.print("Help Called");
+471.   
+472.   digitalWrite(LED_ERR, HIGH);
+473.   for (int i = 0; i < 5; i++) {
+474.     tone(BUZZER, 2000);
+475.     delay(200);
+476.     noTone(BUZZER);
+477.     delay(200);
+478.   }
+479.   digitalWrite(LED_ERR, LOW);
+480.   
+481.   delay(2000);
+482.   if (state == IDLE) {
+483.     lcd.clear();
+484.     lcd.print("Device Ready");
+485.   }
+486. }
+487. 
+488. /* DISPLAY INFO */
+489. void displayInfo() {
+490.   static unsigned long lastDisplayUpdate = 0;
+491.   if (millis() - lastDisplayUpdate < 1000) return; 
+492.   
+493.   lastDisplayUpdate = millis();
+494.   
+495.   if (currentPrescription.isValid) {
+496.     lcd.setCursor(0, 0);
+497.     String patientName = currentPrescription.patientName;
+498.     if (patientName.length() > 16) {
+499.       patientName = patientName.substring(0, 16);
+500.     }
+501.     lcd.print(patientName);
+502.     
+503.     lcd.setCursor(0, 1);
+504.     lcd.print("Press CONFIRM   "); 
+505.     
+506.     unsigned long remaining = (CONFIRM_TIMEOUT - (millis() - confirmStart)) / 1000;
+507.     if (remaining < 10) {
+508.       lcd.setCursor(14, 1);
+509.       lcd.print(String(remaining));
+510.     }
+511.   }
+512. }
+513. 
+514. /* INVENTORY CHECK */
+515. void checkInventory() {
+516.   if (inventoryCount <= 5 && state != LOW_INVENTORY) {
+517.     state = LOW_INVENTORY;
+518.     Serial.println("Low inventory warning - Count: " + String(inventoryCount));
+519.     sendLog("Low inventory warning - Count: " + String(inventoryCount));
+520.     sendStatus("low_inventory");
+521.   }
+522.   
+523.   HTTPClient http;
+524.   http.begin(inventoryUrl);
+525.   http.addHeader("Content-Type", "application/json");
+526.   http.setTimeout(5000);
+527. 
+528.   DynamicJsonDocument doc(512);
+529.   doc["deviceId"] = deviceId;
+530.   doc["medicationId"] = currentMedicineId;
+531.   doc["currentCount"] = inventoryCount;
+532. 
+533.   String payload;
+534.   serializeJson(doc, payload);
+535. 
+536.   http.POST(payload);
+537.   http.end();
+538. }
+539. 
+540. /* ERROR SIGNAL */
+541. void errorSignal() {
+542.   Serial.println("Error signal triggered");
+543.   digitalWrite(LED_ERR, HIGH);
+544.   for (int i = 0; i < 3; i++) {
+545.     tone(BUZZER, 1000);
+546.     delay(300);
+547.     noTone(BUZZER);
+548.     delay(300);
+549.   }
+550.   digitalWrite(LED_ERR, LOW);
+551. }
+552. 
+553. /* STATUS UPDATE */
+554. void sendStatus(String status) {
+555.   float temp = dht.readTemperature();
+556.   float humidity = dht.readHumidity();
+557.   if (isnan(temp)) temp = 25.0;
+558.   if (isnan(humidity)) humidity = 50.0;
+559. 
+560.   HTTPClient http;
+561.   http.begin(statusUrl);
+562.   http.addHeader("Content-Type", "application/json");
+563.   http.setTimeout(5000);
+564. 
+565.   DynamicJsonDocument doc(1024);
+566.   doc["deviceId"] = deviceId;
+567.   doc["status"] = status;
+568.   doc["temperature"] = temp;
+569.   doc["humidity"] = humidity;
+570.   doc["inventoryCount"] = inventoryCount;
+571.   doc["workplaceId"] = workplaceId;
+572.   doc["uptime"] = millis();
+573. 
+574.   String payload;
+575.   serializeJson(doc, payload);
+576. 
+577.   int code = http.POST(payload);
+578.   http.end();
+579.   
+580.   Serial.println("Status sent: " + status + " (Code: " + String(code) + ")");
+581. }
+582. 
+583. /* LOGGING */
+584. void sendLog(String description) {
+585.   HTTPClient http;
+586.   http.begin(logUrl);
+587.   http.addHeader("Content-Type", "application/json");
+588.   http.setTimeout(5000);
+589. 
+590.   DynamicJsonDocument doc(512);
+591.   doc["deviceId"] = deviceId;
+592.   doc["description"] = description;
+593. 
+594.   String payload;
+595.   serializeJson(doc, payload);
+596. 
+597.   http.POST(payload);
+598.   http.end();
+599. 
+600.   Serial.println("LOG: " + description);
+601. }
+
+
+2
+
+
